@@ -1,0 +1,3601 @@
+<!DOCTYPE html>
+<html lang="ru">
+<link rel="manifest" href='data:application/manifest+json;charset=utf-8,{"name":"Симулятор Госномеров Россия","short_name":"Госномера","start_url":"index.html","display":"standalone","background_color":"%231a1a1a","theme_color":"%231a1a1a"}'>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Генератор Номеров: Platinum</title>
+    <!-- Firebase Скрипты -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+        <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <style>
+        * { box-sizing: border-box; user-select: none; -webkit-user-select: none; }
+        body {
+            margin: 0; padding: 0;
+            background: linear-gradient(135deg, #0b0d17, #16192b, #090a10);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            color: #fff; display: flex; flex-direction: column;
+            align-items: center; justify-content: space-between;
+            min-height: 100vh; padding: 15px;
+        }
+        .modal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); display: flex;
+            flex-direction: column; align-items: center; justify-content: center;
+            z-index: 100; padding: 15px;
+        }
+        .modal-content {
+            background: #181a29; border: 1px solid rgba(255,255,255,0.15); padding: 22px;
+            border-radius: 20px; width: 100%; max-width: 400px; text-align: center;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.8); max-height: 90vh; overflow-y: auto;
+        }
+        .modal input, .modal select {
+            width: 100%; padding: 12px; margin: 8px 0; border-radius: 12px;
+            border: 1px solid #333652; background: #0d0f18; color: #fff; font-size: 1rem; text-align: center;
+        }
+        .modal button, .btn-action {
+            width: 100%; padding: 12px; background: linear-gradient(135deg, #007bff, #0056b3);
+            border: none; border-radius: 12px; color: #fff; font-size: 1rem; font-weight: bold;
+            cursor: pointer; margin-top: 8px; transition: transform 0.1s;
+        }
+        .btn-action:active { transform: scale(0.98); }
+        .auth-tabs { display: flex; gap: 10px; margin-bottom: 15px; }
+        .auth-tab { flex: 1; padding: 10px; background: #25283b; border: none; border-radius: 10px; color: #aaa; font-weight: bold; cursor: pointer; }
+        .auth-tab.active { background: #007bff; color: #fff; }
+        .header {
+            width: 100%; max-width: 420px; display: flex; justify-content: space-between;
+            align-items: center; background: rgba(255, 255, 255, 0.05);
+            padding: 12px 18px; border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .balance { font-size: 1.2rem; font-weight: 800; color: #2ecc71; text-shadow: 0 0 10px rgba(46, 204, 113, 0.3); }
+        .user-tag { font-size: 0.85rem; color: #a0a5ba; }
+        .plate-container { width: 100%; max-width: 360px; margin: 15px 0; }
+        .number-plate {
+            width: 100%; height: 82px; background: #fdfdfd;
+            border: 4px solid #000; border-radius: 8px; display: flex;
+            align-items: center; justify-content: space-between; padding: 0 8px 0 14px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6); transition: all 0.3s ease; position: relative;
+        }
+        .number-plate.uncommon { border-color: #2da44e; box-shadow: 0 0 20px rgba(45, 164, 78, 0.4); }
+        .number-plate.rare { border-color: #007bff; box-shadow: 0 0 25px rgba(0, 123, 255, 0.5); }
+        .number-plate.epic { border-color: #a370f7; box-shadow: 0 0 30px rgba(163, 112, 247, 0.6); }
+        .number-plate.legendary { border-color: #f1c40f; box-shadow: 0 0 35px rgba(241, 196, 15, 0.8); background: #fffdf0; }
+        .number-plate.mythic { border-color: #e74c3c; box-shadow: 0 0 45px rgba(231, 76, 60, 0.9); background: #fff0f0; }
+        .number-plate.godlike { border-color: #00f2fe; box-shadow: 0 0 50px #00f2fe; background: #f0ffff; }
+        .plate-main { font-family: 'Courier New', Courier, monospace; font-weight: 900; font-size: 2.5rem; color: #111; letter-spacing: 3px; }
+        .plate-region { display: flex; flex-direction: column; align-items: center; border-left: 3px solid #111; height: 100%; padding-left: 8px; min-width: 65px; justify-content: center; }
+        .region-code { font-family: 'Courier New', Courier, monospace; font-weight: 900; font-size: 1.7rem; color: #111; line-height: 1; }
+        .region-country { display: flex; align-items: center; font-size: 0.6rem; color: #111; font-weight: 900; margin-top: 2px; }
+        .flag { width: 14px; height: 9px; margin-left: 3px; background: linear-gradient(to bottom, #fff 33.3%, #0033a0 33.3%, #0033a0 66.6%, #da291c 66.6%); border: 1px solid #777; }
+        .rarity-status { font-size: 1rem; font-weight: 800; text-transform: uppercase; text-shadow: 0 2px 8px rgba(0,0,0,0.8); letter-spacing: 1px; margin-top: 6px; }
+        .plate-price-tag { font-size: 1.1rem; font-weight: 800; color: #f1c40f; margin-top: 4px; text-shadow: 0 2px 6px rgba(0,0,0,0.6); }
+        .status-common { color: #8b949e; }
+        .status-uncommon { color: #2da44e; }
+        .status-rare { color: #388bfd; }
+        .status-epic { color: #a370f7; }
+        .status-legendary { color: #f1c40f; }
+        .status-mythic { color: #ff4d4d; }
+        .status-godlike { color: #00f2fe; }
+        .region-selector-box { width: 100%; max-width: 360px; background: rgba(255,255,255,0.04); padding: 12px; border-radius: 15px; border: 1px solid rgba(255,255,255,0.08); margin-bottom: 10px; }
+        .region-selector-box label { font-size: 0.8rem; color: #a0a5ba; display: block; margin-bottom: 5px; font-weight: bold; }
+        .region-selector-box select { width: 100%; padding: 10px; background: #0f111a; color: #fff; border: 1px solid #2a2d42; border-radius: 10px; font-weight: bold; }
+        .btn-container { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 8px; }
+        .spin-btn {
+            width: 100%; padding: 16px; background: linear-gradient(135deg, #2ea44f, #1f7a37); border: none;
+            border-radius: 50px; color: white; font-size: 1.2rem; font-weight: 900; box-shadow: 0 6px 20px rgba(46, 164, 79, 0.4); cursor: pointer; transition: 0.2s;
+        }
+        .spin-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .bottom-menu { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; justify-content: center; }
+        .menu-btn { padding: 8px 14px; border: none; border-radius: 10px; color: white; font-weight: bold; font-size: 0.85rem; cursor: pointer; background: #21263d; border: 1px solid rgba(255,255,255,0.05); }
+        #admin-open-btn { background: #d73a49; display: none; }
+        .list-box { background: #0d0f18; padding: 10px; border-radius: 10px; max-height: 180px; overflow-y: auto; text-align: left; font-size: 0.85rem; border: 1px solid #25283b; margin-top: 5px; }
+        .list-item { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; padding: 8px; background: #181a29; border-radius: 8px; }
+        .admin-field { margin: 12px 0; text-align: left; border-bottom: 1px solid #25283b; padding-bottom: 10px; }
+        .admin-field label { font-size: 0.8rem; color: #a0a5ba; display: block; margin-bottom: 4px; font-weight: bold; }
+ /* Стили рамок и пластин для номеров */
+.car-plate {
+    position: relative;
+    border: 4px solid #333;
+    padding: 6px 12px;
+    border-radius: 6px;
+    background: #fff;
+    display: inline-block;
+    font-family: monospace;
+    font-weight: bold;
+}
+
+.car-plate.frame-carbon {
+    border-color: #222;
+    background: linear-gradient(135deg, #2b2b2b 0%, #111 100%);
+    color: #fff;
+}
+
+.car-plate.frame-gold {
+    border-color: #ffd700;
+    box-shadow: 0 0 12px rgba(255, 215, 0, 0.6);
+    background: linear-gradient(135deg, #fffdf0 0%, #fff 100%);
+}
+
+.car-plate.frame-police {
+    border-color: #003366;
+    box-shadow: 0 0 12px rgba(0, 51, 102, 0.7);
+    background: #f0f4f8;
+}
+
+ </style>
+</head>
+<body>
+
+    <!-- Модальное окно авторизации -->
+    <div id="auth-modal" class="modal">
+        <div class="modal-content">
+            <div class="auth-tabs">
+                <button id="tab-login" class="auth-tab active" onclick="switchAuthTab('login')">Вход</button>
+                <button id="tab-register" class="auth-tab" onclick="switchAuthTab('register')">Регистрация</button>
+            </div>
+            <h3 id="auth-title" style="margin-top:0;">Авторизация</h3>
+            <input type="text" id="username-input" placeholder="Никнейм..." maxlength="15">
+            <input type="password" id="password-input" placeholder="Пароль...">
+            <button id="auth-submit-btn" class="btn-action" onclick="handleAuthSubmit()">Войти</button>
+        </div>
+    </div>
+
+    <!-- Модальное окно настроек -->
+    <div id="settings-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h2>Настройки ⚙️</h2>
+            <div style="margin: 15px 0; text-align: left;">
+                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;"><input type="checkbox" id="vibro-toggle" checked style="width: 20px; margin: 0;"> Вибрация</label>
+                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-top: 10px;"><input type="checkbox" id="sound-toggle" checked style="width: 20px; margin: 0;"> Звуковые эффекты</label>
+            </div>
+            <div style="margin: 15px 0; text-align: left; border-top: 1px solid #333652; padding-top: 15px;">
+                <label style="font-size: 0.8rem; color: #a0a5ba; display: block; margin-bottom: 5px; font-weight: bold;">ПРОМОКОД:</label>
+                <input type="text" id="promo-input" placeholder="Введите код...">
+                <button class="btn-action" style="background: #007bff;" onclick="activatePromo()">Активировать</button>
+            </div>
+            <div style="margin: 15px 0; text-align: left; border-top: 1px solid #333652; padding-top: 15px;">
+    <label style="font-size: 0.8rem; color: #a0a5ba; display: block; margin-bottom: 5px; font-weight: bold;">СМЕНА НИКНЕЙМА:</label>
+<input type="text" id="new-username-input" placeholder="Новый никнейм...">
+<button class="btn-action" style="background: #3498db;" onclick="changeNickname()">Сменить ник</button>
+</div>
+            <div style="margin: 15px 0; text-align: left; border-top: 1px solid #333652; padding-top: 15px;">
+                <label style="font-size: 0.8rem; color: #a0a5ba; display: block; margin-bottom: 5px; font-weight: bold;">ПЕРЕВОД ДЕНЕГ ДРУГУ:</label>
+                <input type="text" id="transfer-target" placeholder="Никнейм друга...">
+                <input type="number" id="transfer-amount" placeholder="Сумма...">
+                <button class="btn-action" style="background: #2ea44f;" onclick="transferMoneyToFriend()">Перевести</button>
+            </div>
+            <button class="btn-action" style="background: #e67e22; margin-top: 10px;" onclick="logoutUser()">Выйти из аккаунта</button>
+            <button class="btn-action" style="background:#d73a49; margin-top: 10px;" onclick="resetAllData()">Сбросить мой прогресс</button>
+            <button class="btn-action" style="background:#484f58; margin-top: 10px;" onclick="closeModal('settings-modal')">Закрыть</button>
+        </div>
+        <!-- Модальное окно тюнинга и кастомизации -->
+<div id="tuning-modal" class="modal" style="display: none;">
+    <div class="modal-content" style="text-align: left; max-width: 450px;">
+        <h3 style="text-align: center; color: #ffd700; margin-top: 0;">🎨 Тюнинг номеров</h3>
+        <p style="font-size: 0.85rem; color: #a0a5ba; text-align: center;">Выберите номер для модификации, а затем примените рамку или стиль пластины.</p>
+        
+        <!-- Выбор номера из инвентаря для тюнинга -->
+        <div style="margin: 15px 0;">
+            <label style="font-size: 0.8rem; color: #a0a5ba; display: block; margin-bottom: 5px;">Выберите номер:</label>
+            <select id="tuning-plate-select" style="width: 100%; padding: 8px; background: #16192b; color: #fff; border: 1px solid #333652; border-radius: 4px;">
+                <!-- Сюда динамически подгрузятся номера игрока -->
+            </select>
+        </div>
+
+        <!-- Выбор рамки -->
+        <div style="margin: 15px 0;">
+            <label style="font-size: 0.8rem; color: #a0a5ba; display: block; margin-bottom: 5px;">Рамка для номера:</label>
+            <select id="tuning-frame-select" style="width: 100%; padding: 8px; background: #16192b; color: #fff; border: 1px solid #333652; border-radius: 4px;">
+                <option value="standard">Пластиковая рамка (Бесплатно)</option>
+                <option value="carbon">Карбоновая рамка (15 000 ₽)</option>
+                <option value="gold">Золотая рамка (50 000 ₽)</option>
+                <option value="police">Рамка МВД/ФСБ (150 000 ₽)</option>
+            </select>
+        </div>
+
+        <!-- Выбор стиля пластины -->
+        <div style="margin: 15px 0;">
+            <label style="font-size: 0.8rem; color: #a0a5ba; display: block; margin-bottom: 5px;">Стиль пластины:</label>
+            <select id="tuning-style-select" style="width: 100%; padding: 8px; background: #16192b; color: #fff; border: 1px solid #333652; border-radius: 4px;">
+                <option value="standard">С флагом РФ (Бесплатно)</option>
+                <option value="noflag">Без флага (ГОСТ) (10 000 ₽)</option>
+                <option value="transit">Транзитный номер (25 000 ₽)</option>
+            </select>
+        </div>
+
+        <button class="btn-action" style="width: 100%; background: #2ed573; margin-top: 10px; font-weight: bold;" onclick="applyTuning()">Установить тюнинг</button>
+        <button class="btn-action" style="width: 100%; background: #ff4757; margin-top: 5px;" onclick="closeModal('tuning-modal')">Закрыть</button>
+    </div>
+</div>
+    </div>
+
+    <!-- Модальное окно информации -->
+    <div id="info-modal" class="modal" style="display: none;">
+        <div class="modal-content" style="text-align: left;">
+            <h3 style="text-align: center; margin-top: 0; color: #007bff;">📊 Таблица Тарифов и Шансов</h3>
+            <p style="font-size:0.8rem; color:#aaa;">Шансы выпадения редких комбинаций:</p>
+            <ul style="font-size:0.8rem; padding-left: 20px; line-height: 1.5;">
+                <li><b>Обычный:</b> Базовый частый вариант.</li>
+                <li><b>Зеркальный / Редкий:</b> Требует удачи.</li>
+                <li><b>Эпический / Легендарный:</b> Выпадают намного реже!</li>
+            </ul>
+            <button class="btn-action" onclick="closeModal('info-modal')">Понятно</button>
+        </div>
+    </div>
+
+    <!-- Модальное окно админки -->
+    <div id="admin-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h2 style="color: #d73a49; margin-top:0;">Панель Создателя 🛠</h2>
+            <!-- Блок управления админами (виден только deadk1ra) -->
+<div class="admin-field" id="owner-panel-section" style="display: none; border: 2px dashed #f39c12; padding: 12px; margin-bottom: 15px; border-radius: 8px;">
+    <label style="color: #f1c40f; font-weight: bold;">ДОБАВИТЬ НОВОГО АДМИНА:</label>
+    <input type="text" id="new-admin-username" placeholder="Ник игрока" style="width: 100%; padding: 8px; margin: 5px 0; background: #0d0f18; color: #fff; border: 1px solid #333; border-radius: 6px;">
+    <input type="password" id="new-admin-password" placeholder="Пароль для него" style="width: 100%; padding: 8px; margin: 5px 0; background: #0d0f18; color: #fff; border: 1px solid #333; border-radius: 6px;">
+    <button class="btn-action" style="background:#f39c12; color:#000; font-weight:bold; width:100%; padding: 10px; margin-top: 5px;" onclick="adminAddNewAdmin()">Назначить админом</button>
+</div>
+<div id="creator-only-block" style="display: none;">
+    <div class="admin-fields">
+        <label>СТЕРЕТЬ ИЛИ ИЗМЕНИТЬ БАЛАНС:</label>
+        <input type="text" id="admin-reset-money-target" placeholder="Ник игрока">
+        <input type="number" id="admin-reset-money-amount" placeholder="Новая сумма (0 для сброса)">
+        <button onclick="adminResetPlayerMoney()" class="btn-action" style="background: #e74c3c;">Изменить баланс</button>
+    </div>
+
+    <div class="admin-fields">
+        <label>ВЫДАТЬ ТОЧНЫЙ НОМЕР:</label>
+        <input type="text" id="admin-plate-target" placeholder="Ник игрока">
+        <input type="text" id="admin-plate-number" placeholder="Например: А 000 АА 702">
+        <button onclick="adminForceGivePlate()" class="btn-action" style="background: #27ae60;">Выдать номер</button>
+    </div>
+</div>
+
+<div class="admin-field">
+                <label>ВЫДАЧА РУБЛЕЙ:</label>
+                <input type="text" id="admin-money-target" placeholder="Никнейм (пусто = себе)">
+                <input type="number" id="admin-money-amount" placeholder="Сумма рублей">
+                <button class="btn-action" style="background:#2ea44f;" onclick="adminGiveMoney()">Начислить баланс</button>
+            </div>
+            <div class="admin-field">
+                <label>РЕЖИМ БОГА:</label>
+                <button id="godmode-btn" class="btn-action" style="background:#8a63d2;" onclick="adminToggleGodMode()">ВКЛЮЧИТЬ</button>
+            </div>
+            <div class="admin-field">
+                <label>ПОДКРУТКА УДАЧИ ИГРОКУ (%):</label>
+                <input type="text" id="admin-chance-target" placeholder="Никнейм игрока">
+                <input type="number" id="chance-input" placeholder="Шанс от 0 до 100" min="0" max="100">
+                <button class="btn-action" style="background:#007bff;" onclick="adminSetPlayerChance()">Изменить шанс</button>
+            </div>
+            <div class="admin-field">
+                <label>ИГРОКИ В БАЗЕ:</label>
+                <div class="list-box" id="player-list-container"></div>
+            </div>
+            <!-- HTML админ-панели (внутрь модального окна админки) -->
+<div id="admin-panel" style="display: none;">
+    <h3>Административная панель</h3>
+    <div id="admin-restricted-area">
+        <!-- Сюда динамически рендерится кнопка сброса -->
+    </div>
+</div>
+
+            <!-- Блок создания промокодов -->
+            <div class="admin-field">
+                <label>СОЗДАТЬ ПРОМОКОД:</label>
+                <input type="text" id="new-promo-code" placeholder="Код (например, ОСЕНЬ)">
+                <input type="number" id="new-promo-reward" placeholder="Сумма (награда в ₽)">
+                <input type="number" id="new-promo-limit" placeholder="Лимит использований (пусто = без лимита)">
+                <div style="font-size:0.75rem; color:#aaa; text-align:left; margin: 4px 0;">Действует с и до (оставь пустым, если без срока):</div>
+                <input type="date" id="new-promo-start">
+                <input type="date" id="new-promo-end">
+                <button class="btn-action" style="background:#8a63d2;" onclick="adminCreatePromo()">Создать промокод</button>
+            </div>
+            <button class="btn-action" style="background:#484f58;" onclick="closeModal('admin-modal')">Закрыть</button>
+        </div>
+    </div>
+
+    <!-- Модальное окно коллекции -->
+    <div id="collection-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h2>Моя коллекция</h2>
+            <div id="collection-items" style="margin: 20px 0; text-align: left; max-height: 250px; overflow-y: auto;"></div>
+            <button onclick="sellAllCollection(); openCollectionModal();" style="background: #e74c3c; color: white; border: none; padding: 10px 15px; border-radius: 8px; cursor: pointer; margin-bottom: 8px; width: 100%;">Продать всё</button>
+            <button onclick="closeCollectionModal()" style="background: #555; color: white; border: none; padding: 10px 15px; border-radius: 8px; cursor: pointer; width: 100%;">Закрыть</button>
+        </div>
+    </div>
+
+    <!-- Модальное окно рынка -->
+    <div id="market-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h2>Рынок номеров 🛒</h2>
+            <div id="market-items" style="margin: 20px 0; text-align: left; max-height: 250px; overflow-y: auto;"></div>
+            <button class="btn-action" style="background: #555;" onclick="closeModal('market-modal')">Закрыть</button>
+        </div>
+    </div>
+
+    <!-- Основной интерфейс -->
+    <div class="header">
+        <div>Баланс: <span id="balance" class="balance">5 000 ₽</span></div>
+        <div class="user-tag" id="user-display">Игрок: ---</div>
+    </div>
+
+    <div class="region-selector-box">
+        <label for="region-select">ВЫБЕРИТЕ РЕГИОН ДЛЯ КРУТКИ:</label>
+        <select id="region-select" onchange="updateRegionPrice()"></select>
+    </div>
+
+    <div style="text-align: center;">
+        <div id="rarity-text" class="rarity-status status-common">Испытай удачу!</div>
+        <div id="plate-price-tag" class="plate-price-tag" style="display: none;">Цена: 0 ₽</div>
+    </div>
+
+    <div class="plate-container">
+        <div id="plate" class="number-plate">
+            <div id="plate-text" class="plate-main">А000АА</div>
+            <div class="plate-region">
+                <div id="region-text" class="region-code">102</div>
+                <div class="region-country">RUS <div class="flag"></div></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="btn-container">
+        <button id="spin-button" class="spin-btn" onclick="spinNumber()">КРУТИТЬ (500 ₽)</button>
+    </div>
+
+    <div class="bottom-menu">
+        <button class="menu-btn" onclick="openCollectionModal()">📦 Коллекция</button>
+        <button class="menu-btn" onclick="openMarketModal()">🛒 Рынок</button>
+        <button class="menu-btn" onclick="openModal('info-modal')">📊 Шансы</button>
+        <button class="menu-btn" onclick="openModal('settings-modal')">⚙️ Опции</button>
+        <button id="admin-open-btn" class="menu-btn" style="display: none;" onclick="openAdmin()">⚠️️ Админка</button>
+    </div>
+    <script>
+const FRAME_TYPES = {
+standard: { name: 'Пластиковая рамка', price: 0, bonusLuck: 0 },
+carbon: { name: 'Карбоновая рамка', price: 15000, bonusLuck: 0.02 },
+gold: { name: 'Золотая рамка', price: 50000, bonusLuck: 0.05 },
+police: { name: 'Рамка МВД/ФСБ', price: 150000, bonusLuck: 0.10 }
+};
+const PLATE_STYLES = {
+standard: { name: 'С флагом РФ', price: 0 },
+noflag: { name: 'Без флага (ГОСТ)', price: 10000 },
+transit: { name: 'Транзитный номер', price: 25000 }
+};
+const firebaseConfig = {
+databaseURL: "https://simulatorgosnomerarussia-default-rtdb.firebaseio.com/"
+};
+if (!firebase.apps.length) {
+firebase.initializeApp(firebaseConfig);
+}
+const db = firebase.database();
+const LETTERS = ['А', 'В', 'Е', 'К', 'М', 'Н', 'О', 'Р', 'С', 'Т', 'У', 'Х'];
+const REGIONS_DATA = [
+{ code: '102', name: 'Башкортостан (102)', mult: 3.0, spinCost: 1000, codes: ['02', '102', '702'] },
+{ code: '116', name: 'Татарстан (116)', mult: 1.1, spinCost: 600, codes: ['16', '116', '716'] },
+{ code: '777', name: 'Москва (777)', mult: 10.0, spinCost: 10000, codes: ['77', '97', '99', '177', '199', '777'] },
+{ code: '78',  name: 'Санкт-Петербург (78)', mult: 2.5, spinCost: 800, codes: ['78', '98', '178'] },
+{ code: '05',  name: 'Дагестан (05)', mult: 2.0, spinCost: 600, codes: ['05', '105'] }
+];
+let currentUser = null;
+let balance = 5000;
+let playerCollection = [];
+let godModeActive = false;
+let myChance = NaN;
+const esc = t => String(t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const ukey = u => String(u).toLowerCase().replace(/[.#$\/\[\]]/g, '_');
+let authMode = 'login';
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let audioCtx = null;
+function playSound(freq, duration) {
+const soundToggle = document.getElementById('sound-toggle');
+if (soundToggle && !soundToggle.checked) return;
+try {
+if (!audioCtx) audioCtx = new AudioCtx();
+let osc = audioCtx.createOscillator();
+let gain = audioCtx.createGain();
+osc.frequency.value = freq;
+osc.connect(gain);
+gain.connect(audioCtx.destination);
+osc.start();
+gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration);
+osc.stop(audioCtx.currentTime + duration);
+} catch (e) {}
+}
+function initRegionSelect() {
+const sel = document.getElementById('region-select');
+if (!sel) return;
+sel.innerHTML = '';
+REGIONS_DATA.forEach((r, idx) => {
+let opt = document.createElement('option');
+opt.value = idx;
+opt.innerText = `${r.name} — Крутка: ${formatMoney(r.spinCost)}`;
+sel.appendChild(opt);
+});
+updateRegionPrice();
+}
+function updateRegionPrice() {
+const sel = document.getElementById('region-select');
+if (!sel) return;
+const idx = sel.value;
+const reg = REGIONS_DATA[idx];
+const cost = reg ? reg.spinCost : 0;
+const btn = document.getElementById('spin-button');
+if (btn) {
+btn.innerText = `КРУТИТЬ (${formatMoney(cost)})`;
+}
+}
+function switchAuthTab(mode) {
+authMode = mode;
+const loginTab = document.getElementById('tab-login');
+const registerTab = document.getElementById('tab-register');
+const authTitle = document.getElementById('auth-title');
+const authSubmitBtn = document.getElementById('auth-submit-btn');
+if (mode === 'login') {
+if (loginTab) loginTab.classList.add('active');
+if (registerTab) registerTab.classList.remove('active');
+if (authTitle) authTitle.innerText = 'Вход';
+if (authSubmitBtn) authSubmitBtn.innerText = 'Войти';
+} else {
+if (registerTab) registerTab.classList.add('active');
+if (loginTab) loginTab.classList.remove('active');
+if (authTitle) authTitle.innerText = 'Регистрация';
+if (authSubmitBtn) authSubmitBtn.innerText = 'Зарегистрироваться';
+}
+}
+function handleAuthSubmit() {
+const usernameInput = document.getElementById('username-input');
+const passwordInput = document.getElementById('password-input');
+if (!usernameInput || !passwordInput) { alert('Поля ввода не найдены!'); return; }
+const username = usernameInput.value.trim();
+const password = passwordInput.value.trim();
+if (!username || !password) { alert('Введите логин и пароль!'); return; }
+const lowerUser = username.toLowerCase();
+const safeAdminKey = lowerUser.replace(/\./g, '_');
+db.ref('admins/' + safeAdminKey).once('value').then((adminSnapshot) => {
+if (adminSnapshot.exists()) {
+const adminData = adminSnapshot.val();
+if (adminData.password !== password) {
+alert('Неверный пароль администратора!');
+return;
+}
+db.ref('users/' + lowerUser).once('value').then((userSnap) => {
+if (!userSnap.exists()) {
+db.ref('users/' + lowerUser).set({
+password: password,
+balance: 10000,
+created: Date.now()
+}).then(() => loginUser(username));
+} else {
+loginUser(username);
+}
+});
+} else {
+db.ref('users/' + lowerUser).once('value').then((snapshot) => {
+if (snapshot.exists()) {
+const data = snapshot.val();
+if (data.password && data.password !== password) { alert('Неверный пароль!'); return; }
+if (!data.password) db.ref('users/' + lowerUser + '/password').set(password);
+loginUser(username);
+} else {
+if (authMode === 'login') { alert('Пользователь не найден! Перейдите на вкладку регистрации.'); return; }
+db.ref('users/' + lowerUser).set({
+password: password,
+balance: 10000,
+created: Date.now()
+}).then(() => {
+loginUser(username);
+}).catch((err) => { alert('Ошибка записи в базу: ' + err.message); });
+}
+});
+}
+}).catch((err) => { alert('Ошибка базы данных: ' + err.message); });
+}
+function loginUser(user) {
+currentUser = user;
+localStorage.setItem('last_logged_user', user);
+const userDisplay = document.getElementById('user-display');
+if (userDisplay) userDisplay.innerText = 'Игрок: ' + user;
+closeModal('auth-modal');
+playerCollection = [];
+db.ref('collections/' + ukey(user)).on('value', (snap) => {
+const v = snap.val();
+playerCollection = v ? (Array.isArray(v) ? v.filter(Boolean) : Object.values(v)) : [];
+});
+db.ref('chances/' + ukey(user)).on('value', (snap) => {
+myChance = snap.exists() ? parseFloat(snap.val()) : NaN;
+});
+db.ref('users/' + user.toLowerCase() + '/balance').on('value', (snapshot) => {
+if (snapshot.exists()) {
+balance = snapshot.val();
+} else {
+balance = 10000;
+db.ref('users/' + user.toLowerCase() + '/balance').set(balance);
+}
+localStorage.setItem('bal_' + user.toLowerCase(), balance);
+updateBalanceDisplay();
+});
+db.ref('all_players/' + user.toLowerCase()).set(user);
+const adminBtn = document.getElementById('admin-open-btn');
+if (adminBtn) {
+let safeKey = user.toLowerCase().replace(/\./g, '_');
+db.ref('admins/' + safeKey).once('value').then((snap) => {
+if (snap.exists() || user.toLowerCase() === "deadk1ra" || user.toLowerCase() === "beta-uzer") {
+adminBtn.style.display = "block";
+} else {
+adminBtn.style.display = "none";
+}
+});
+}
+checkDailyBonus();
+}
+function logoutUser() {
+if (confirm("Вы действительно хотите выйти из аккаунта?")) {
+localStorage.removeItem('last_logged_user');
+location.reload();
+}
+}
+function checkAuth() {
+if (!currentUser) {
+openModal('auth-modal');
+}
+}
+function saveCollection() {
+if (currentUser) {
+db.ref('collections/' + ukey(currentUser)).set(playerCollection);
+}
+}
+function getRandomElem(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+function getRandomDigit() { return Math.floor(Math.random() * 10).toString(); }
+function generatePlateData() {
+if (godModeActive) {
+return { plate: '077700', region: '102', rarityClass: 'godlike', rarityText: '👑 БОЖЕСТВЕННЫЙ', price: 50000000 };
+}
+const sel = document.getElementById('region-select');
+const regDataIdx = sel ? sel.value : 0;
+const regionObj = REGIONS_DATA[regDataIdx] || { codes: ['02', '102'], mult: 1 };
+let reg = getRandomElem(regionObj.codes);
+let basepriceMultiplier = regionObj.mult;
+let l1 = getRandomElem(LETTERS), l2 = getRandomElem(LETTERS), l3 = getRandomElem(LETTERS);
+let d1 = getRandomDigit(), d2 = getRandomDigit(), d3 = getRandomDigit();
+let roll = Math.random() * 100;
+let customChance = myChance;
+let luckChance = isNaN(customChance) ? 1.2 : customChance;
+if (roll < luckChance) {
+let lucky = getRandomDigit();
+d1 = lucky; d2 = lucky; d3 = lucky;
+if (roll < luckChance / 3) { l1 = "А"; l2 = "А"; l3 = "А"; }
+}
+let rClass = "common";
+let rText = "Обычный номер";
+let basePrice = Math.floor(800 + Math.random() * 2000);
+let isTripleDigits = (d1 === d2 && d2 === d3);
+let isMirror = (d1 === d3 && d1 !== d2);
+let isSpecialLetters = ((l1==='А' && l2==='М' && l3==='Р') || (l1==='Е' && l2==='К' && l3==='Х') || (l1===l2 && l2===l3));
+if (isMirror) {
+rClass = "uncommon";
+rText = "⭐ Зеркальный номер";
+basePrice = Math.floor(5000 + Math.random() * 12000);
+}
+if ((d2 === '0' && d3 === '0') || (l1 === l3 && l1 !== l2 && Math.random() > 0.4)) {
+rClass = "rare";
+rText = "🔥 Редкая серия";
+basePrice = Math.floor(25000 + Math.random() * 50000);
+}
+if (isSpecialLetters && Math.random() > 0.3) {
+rClass = "epic";
+rText = "👑 Эпическая Спецсерия";
+basePrice = Math.floor(100000 + Math.random() * 300000);
+}
+if (isTripleDigits && Math.random() > 0.2) {
+rClass = "legendary";
+rText = "💎 ЛЕГЕНДАРНЫЕ ТРИ ЦИФРЫ";
+basePrice = Math.floor(600000 + Math.random() * 1500000);
+}
+if (isTripleDigits && isSpecialLetters && Math.random() > 0.5) {
+rClass = "godlike";
+rText = "👑 Абсолютный Эксклюзив!";
+basePrice = Math.floor(5000000 + Math.random() * 10000000);
+}
+let finalPrice = Math.floor(basePrice * basepriceMultiplier + Math.floor(Math.random() * 999));
+return {
+plate: `${l1}${d1}${d2}${d3}${l2}${l3}`,
+region: reg,
+rarityClass: rClass,
+rarityText: rText,
+price: finalPrice,
+style: 'standard',
+frame: 'standard'
+};
+}
+function spinNumber() {
+if (!currentUser) {
+openModal('auth-modal');
+return alert("Сначала авторизуйтесь!");
+}
+if (localStorage.getItem('ban_' + currentUser.toLowerCase()) === "true") {
+return alert("🚫 АККАУНТ ЗАБЛОКИРОВАН!");
+}
+const sel = document.getElementById('region-select');
+const regDataIdx = sel ? sel.value : 0;
+const selectedRegion = REGIONS_DATA[regDataIdx];
+const cost = selectedRegion ? selectedRegion.spinCost : 0;
+if (balance < cost) {
+return alert("Недостаточно рублей для прокрута!");
+}
+updateBalance(-cost);
+const spinBtn = document.getElementById('spin-button');
+const priceTag = document.getElementById('plate-price-tag');
+if (spinBtn) spinBtn.disabled = true;
+if (priceTag) priceTag.style.display = "none";
+playSound(300, 0.05);
+let clicks = 0;
+const interval = setInterval(() => {
+const plateText = document.getElementById('plate-text');
+const regionText = document.getElementById('region-text');
+if (plateText) plateText.innerText = `${getRandomElem(LETTERS)}${getRandomDigit()}${getRandomDigit()}${getRandomDigit()}${getRandomElem(LETTERS)}${getRandomElem(LETTERS)}`;
+if (regionText) regionText.innerText = Math.floor(Math.random() * 90) + 10;
+playSound(200 + clicks * 15, 0.02);
+clicks++;
+if (clicks > 12) {
+clearInterval(interval);
+let data = generatePlateData();
+playerCollection.push(data);
+saveCollection();
+if (plateText) plateText.innerText = data.plate;
+if (regionText) regionText.innerText = data.region;
+const plateEl = document.getElementById('plate');
+if (plateEl) plateEl.className = "number-plate " + data.rarityClass;
+let st = document.getElementById('rarity-text');
+if (st) {
+st.innerText = data.rarityText + " (В коллекции!)";
+st.className = "rarity-status status-" + data.rarityClass;
+}
+if (priceTag) {
+priceTag.innerText = "Стоимость: " + formatMoney(data.price);
+priceTag.style.display = "block";
+}
+if (spinBtn) spinBtn.disabled = false;
+if (data.rarityClass === 'legendary' || data.rarityClass === 'godlike') {
+playSound(800, 0.4);
+} else {
+playSound(500, 0.1);
+}
+}
+}, 60);
+}
+function openCollectionModal() {
+const container = document.getElementById('collection-items');
+if (!container) return;
+container.innerHTML = '';
+if (playerCollection.length === 0) {
+container.innerHTML = '<p style="text-align: center; color: #aaa;">Коллекция пуста. Покрутите номера!</p>';
+} else {
+playerCollection.forEach((item, index) => {
+container.innerHTML += `<div style="background: #2a2a2a; padding: 10px; margin-bottom: 10px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;"><div><b style="font-size: 16px;">${esc(item.plate)}</b> <span style="font-size: 12px; color: #aaa;">(${esc(item.region)})</span><br><span style="font-size: 12px; color: #f1c40f;">${esc(item.rarityText || '')}</span><br><b>${formatMoney(item.price)}</b></div><div style="display:flex; flex-direction:column; gap:4px;"><button onclick="sellSelectedPlate(${index}); openCollectionModal();" style="background: #2ecc71; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-weight: bold; font-size:0.75rem;">Продать</button><button onclick="putOnMarket(${index})" style="background: #007bff; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-weight: bold; font-size:0.75rem;">На рынок</button></div></div>`;
+});
+}
+openModal('collection-modal');
+}
+function closeCollectionModal() { closeModal('collection-modal'); }
+function sellSelectedPlate(index) {
+const item = playerCollection[index];
+if (item) {
+updateBalance(item.price);
+playerCollection.splice(index, 1);
+saveCollection();
+}
+}
+function sellAllCollection() {
+if (playerCollection.length === 0) return;
+let totalEarned = 0;
+playerCollection.forEach(item => { totalEarned += item.price; });
+updateBalance(totalEarned);
+playerCollection = [];
+saveCollection();
+}
+function checkDailyBonus() {
+const ref = db.ref('users/' + ukey(currentUser) + '/daily');
+ref.once('value').then((snap) => {
+const last = snap.val() || 0, now = Date.now();
+if (now - last > 24 * 60 * 60 * 1000) {
+ref.set(now);
+updateBalance(3000);
+setTimeout(() => alert("🎁 Ежедневный бонус: вам начислено 3 000 ₽!"), 500);
+}
+});
+}
+async function activatePromo() {
+if (!currentUser) return;
+let codeInput = document.getElementById('promo-input');
+if (!codeInput) return;
+let code = codeInput.value.trim().toUpperCase();
+if (!code) return alert("Введите промокод!");
+const usedRef = db.ref('users/' + ukey(currentUser) + '/promos/' + ukey(code));
+const usedSnap = await usedRef.once('value');
+if (usedSnap.exists()) return alert("Вы уже активировали этот промокод!");
+db.ref('promos/' + code).once('value').then((snapshot) => {
+if (!snapshot.exists()) {
+return alert("Неверный или несуществующий промокод!");
+}
+let promoData = snapshot.val();
+let now = Date.now();
+if (promoData.startDate && now < promoData.startDate) {
+return alert("Этот промокод еще не начал действовать!");
+}
+if (promoData.endDate && now > promoData.endDate) {
+return alert("Срок действия этого промокода истек!");
+}
+if (promoData.maxUses && promoData.maxUses > 0) {
+let currentUses = promoData.usesCount || 0;
+if (currentUses >= promoData.maxUses) {
+return alert("Лимит использований этого промокода исчерпан!");
+}
+db.ref('promos/' + code + '/usesCount').set(currentUses + 1);
+}
+updateBalance(promoData.reward);
+usedRef.set(true);
+alert(`Успешно! Промокод активирован. Получено: ${formatMoney(promoData.reward)}`);
+codeInput.value = '';
+}).catch((err) => {
+alert("Ошибка при проверке промокода: " + err.message);
+});
+}
+function putOnMarket(index) {
+let item = playerCollection[index];
+if (!item) return;
+db.ref('market').push({ seller: currentUser, item: item }).then(() => {
+playerCollection.splice(index, 1);
+saveCollection();
+alert("Номер выставлен на общий рынок!");
+openCollectionModal();
+}).catch(e => alert("Ошибка: " + e.message));
+}
+function openMarketModal() {
+const container = document.getElementById('market-items');
+if (!container) return;
+container.innerHTML = '<p style="text-align:center;color:#aaa;">Загрузка...</p>';
+openModal('market-modal');
+db.ref('market').once('value').then((snap) => {
+container.innerHTML = '';
+if (!snap.exists()) {
+container.innerHTML = '<p style="text-align: center; color: #aaa;">Рынок пуст. Никто пока не выставил номера.</p>';
+return;
+}
+snap.forEach((child) => {
+const m = child.val(), item = m.item, k = child.key;
+container.innerHTML += `
+<div style="background: #2a2a2a; padding: 10px; margin-bottom: 10px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
+<div>
+<b style="font-size: 16px;">${esc(item.plate)}</b> <span style="font-size: 12px; color: #aaa;">(${esc(item.region)})</span><br>
+<span style="font-size: 12px; color: #f1c40f;">${esc(item.rarityText || '')}</span><br>
+<span style="font-size: 11px; color: #888;">Продавец: ${esc(m.seller)}</span><br>
+<b>${formatMoney(item.price)}</b>
+</div>
+<button onclick="buyFromMarket('${k}')" style="background: #e74c3c; color: white; border: none; padding: 6px 12px; border-radius: 5px; font-weight: bold; font-size: 0.8rem;">Купить</button>
+</div>`;
+});
+});
+}
+function buyFromMarket(key) {
+db.ref('market/' + key).once('value').then((snap) => {
+const m = snap.val();
+if (!m) { alert("Этот номер уже купили!"); return openMarketModal(); }
+if (ukey(m.seller) === ukey(currentUser)) return alert("Вы не можете купить свой собственный номер!");
+if (balance < m.item.price) return alert("Недостаточно средств для покупки этого номера!");
+return db.ref('market/' + key).transaction(cur => cur ? null : undefined).then((res) => {
+if (!res.committed) { alert("Этот номер уже купили!"); return openMarketModal(); }
+updateBalance(-m.item.price);
+db.ref('users/' + ukey(m.seller) + '/balance').transaction(b => (b || 0) + m.item.price);
+playerCollection.push(m.item);
+saveCollection();
+alert("Вы успешно приобрели номер!");
+openMarketModal();
+});
+});
+}
+function closeMarketModal() {
+closeModal('market-modal');
+}
+function formatMoney(amount) {
+return amount.toLocaleString('ru-RU') + ' ₽';
+}
+function updateBalance(delta) {
+balance += delta;
+if (currentUser) {
+localStorage.setItem('bal_' + currentUser.toLowerCase(), balance);
+db.ref('users/' + currentUser.toLowerCase() + '/balance').set(balance);
+}
+updateBalanceDisplay();
+}
+function updateBalanceDisplay() {
+const el = document.getElementById('balance');
+if (el) {
+el.innerText = formatMoney(balance);
+}
+}
+function openModal(modalId) {
+if (modalId === 'tuning-modal') {
+const sel = document.getElementById('tuning-plate-select');
+if (sel) sel.innerHTML = playerCollection.map((p, i) => `<option value="${i}">${esc(p.plate)} (${esc(p.region)})</option>`).join('');
+}
+const m = document.getElementById(modalId);
+if (m) m.style.display = 'flex';
+}
+function applyTuning() {
+const i = parseInt(document.getElementById('tuning-plate-select').value);
+const frame = document.getElementById('tuning-frame-select').value;
+const style = document.getElementById('tuning-style-select').value;
+const p = playerCollection[i];
+if (!p) return alert("Сначала выберите номер!");
+const cost = (p.frame === frame ? 0 : FRAME_TYPES[frame].price) + (p.style === style ? 0 : PLATE_STYLES[style].price);
+if (balance < cost) return alert("Недостаточно средств! Нужно " + formatMoney(cost));
+if (cost) updateBalance(-cost);
+p.frame = frame; p.style = style;
+saveCollection();
+alert("Тюнинг установлен! Стоимость: " + formatMoney(cost));
+closeModal('tuning-modal');
+}
+function closeModal(modalId) {
+const m = document.getElementById(modalId);
+if (m) m.style.display = 'none';
+}
+function openAdmin() {
+if (!currentUser) return;
+if (currentUser.toLowerCase() === "deadk1ra") {
+openModal('admin-modal');
+loadAdminPlayersList();
+const ownerSection = document.getElementById('owner-panel-section');
+if (ownerSection) {
+ownerSection.style.display = "block";
+const creatorBlock = document.getElementById('creator-only-block');
+if (creatorBlock) {
+creatorBlock.style.display = (currentUser && currentUser.toLowerCase() === "deadk1ra") ? "block" : "none";
+}
+}
+return;
+}
+let safeKey = currentUser.toLowerCase().replace(/\./g, '_');
+db.ref('admins/' + safeKey).once('value').then((snapshot) => {
+if (!snapshot.exists()) {
+return alert("Доступ запрещен!");
+}
+openModal('admin-modal');
+loadAdminPlayersList();
+const ownerSection = document.getElementById('owner-panel-section');
+if (ownerSection) {
+ownerSection.style.display = "none";
+}
+const creatorBlock = document.getElementById('creator-only-block');
+if (creatorBlock) {
+creatorBlock.style.display = "none";
+}
+});
+}
+function checkAdminAccess(callback) {
+if (!currentUser) return alert("Доступ запрещен!");
+if (currentUser.toLowerCase() === "deadk1ra") {
+callback();
+return;
+}
+let safeKey = currentUser.toLowerCase().replace(/\./g, '_');
+db.ref('admins/' + safeKey).once('value').then((snap) => {
+if (!snap.exists()) {
+alert("Доступ запрещен!");
+} else {
+callback();
+}
+});
+}
+function loadAdminPlayersList() {
+const container = document.getElementById('player-list-container');
+if (!container) return;
+if (currentUser && currentUser.toLowerCase() === "deadk1ra") {
+container.innerHTML = '<div style="color: #aaa; text-align:center;">Загрузка...</div>';
+db.ref('users').once('value').then((snapshot) => {
+container.innerHTML = '';
+if (!snapshot.exists()) {
+container.innerHTML = '<div style="color: #aaa; text-align:center;">Нет игроков в базе</div>';
+return;
+}
+snapshot.forEach((childSnapshot) => {
+let playerName = childSnapshot.key;
+let playerData = childSnapshot.val();
+let playerPassword = playerData.password || '---';
+let playerBalance = playerData.balance || 0;
+container.innerHTML += `
+<div class="list-item" style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #333; margin-bottom: 5px; border-radius: 5px;">
+<span>👤 <b>${esc(playerName)}</b><br><small style="color: #aaa;">Пароль: ${esc(playerPassword)} | Баланс: ${formatMoney(playerBalance)}</small></span>
+</div>`;
+});
+});
+} else {
+container.innerHTML = '<div style="color: #aaa; text-align:center;">Список игроков скрыт для вашей роли</div>';
+}
+}
+function adminGiveMoney() {
+checkAdminAccess(() => {
+let targetUserInput = document.getElementById('admin-money-target');
+let amountInput = document.getElementById('admin-money-amount');
+let targetUser = targetUserInput ? targetUserInput.value.trim() : '';
+let amount = amountInput ? parseInt(amountInput.value) : 0;
+if (isNaN(amount) || amount <= 0) {
+return alert("Введите корректную сумму рублей!");
+}
+if (!targetUser) {
+updateBalance(amount);
+alert(`Успешно начислено ${formatMoney(amount)} себе!`);
+} else {
+db.ref('users/' + targetUser.toLowerCase()).once('value').then((snapshot) => {
+if (!snapshot.exists()) {
+return alert("Пользователь не найден в базе!");
+}
+let currentBal = snapshot.val().balance || 0;
+db.ref('users/' + targetUser.toLowerCase() + '/balance').set(currentBal + amount);
+alert(`Игроку ${targetUser} успешно начислено ${formatMoney(amount)}!`);
+});
+}
+});
+}
+function adminToggleGodMode() {
+checkAdminAccess(() => {
+godModeActive = !godModeActive;
+let btn = document.getElementById('godmode-btn');
+if (btn) {
+btn.innerText = godModeActive ? "ВЫКЛЮЧИТЬ" : "ВКЛЮЧИТЬ";
+btn.style.background = godModeActive ? "#e74c3c" : "#8a63d2";
+}
+alert(godModeActive ? "👑 Режим Бога ВКЛЮЧЕН!" : "❌ Режим Бога выключен.");
+});
+}
+function adminSetPlayerChance() {
+checkAdminAccess(() => {
+let targetPlayerInput = document.getElementById('admin-chance-target');
+let chanceInput = document.getElementById('chance-input');
+let targetPlayer = targetPlayerInput ? targetPlayerInput.value.trim() : '';
+let chance = chanceInput ? parseFloat(chanceInput.value) : NaN;
+if (isNaN(chance) || chance < 0 || chance > 100) {
+return alert("Введите корректный шанс от 0 до 100!");
+}
+db.ref('chances/' + ukey(targetPlayer || currentUser)).set(chance);
+alert(`Шанс для игрока (${targetPlayer || currentUser}) успешно изменен на ${chance}%!`);
+});
+}
+function adminCreatePromo() {
+checkAdminAccess(() => {
+let codeInput = document.getElementById('new-promo-code');
+let rewardInput = document.getElementById('new-promo-reward');
+let limitInput = document.getElementById('new-promo-limit');
+let startInput = document.getElementById('new-promo-start');
+let endInput = document.getElementById('new-promo-end');
+let code = codeInput ? codeInput.value.trim().toUpperCase() : '';
+let reward = rewardInput ? parseInt(rewardInput.value) : 0;
+let limit = limitInput ? limitInput.value.trim() : '';
+let startDateStr = startInput ? startInput.value : '';
+let endDateStr = endInput ? endInput.value : '';
+if (!code || isNaN(reward) || reward <= 0) {
+return alert("Введите корректный код и сумму награды!");
+}
+let promoObj = {
+reward: reward,
+maxUses: limit ? parseInt(limit) : 0,
+usesCount: 0,
+startDate: startDateStr ? new Date(startDateStr).getTime() : null,
+endDate: endDateStr ? new Date(endDateStr).getTime() + 86400000 : null
+};
+db.ref('promos/' + code).set(promoObj).then(() => {
+alert(`Промокод "${code}" успешно создан!`);
+if (codeInput) codeInput.value = '';
+if (rewardInput) rewardInput.value = '';
+if (limitInput) limitInput.value = '';
+if (startInput) startInput.value = '';
+if (endInput) endInput.value = '';
+}).catch((err) => {
+alert("Ошибка создания: " + err.message);
+});
+});
+}
+function transferMoneyToFriend() {
+let recipientInput = document.getElementById('transfer-target');
+let amountInput = document.getElementById('transfer-amount');
+if (!recipientInput || !amountInput) {
+return alert("Поля для перевода не найдены!");
+}
+let recipient = recipientInput.value.trim().toLowerCase();
+let amount = parseInt(amountInput.value);
+if (!recipient || isNaN(amount) || amount <= 0) {
+return alert("Введите корректного получателя и сумму!");
+}
+if (amount > balance) {
+return alert("У вас недостаточно средств для перевода!");
+}
+if (recipient === currentUser.toLowerCase()) {
+return alert("Нельзя переводить средства самому себе!");
+}
+db.ref('users/' + recipient).once('value').then((snapshot) => {
+if (!snapshot.exists()) {
+return alert("Пользователь с таким именем не найден!");
+}
+updateBalance(-amount);
+let targetBal = snapshot.val().balance || 0;
+db.ref('users/' + recipient + '/balance').set(targetBal + amount);
+alert(`Успешно переведено ${formatMoney(amount)} игроку ${recipient}!`);
+recipientInput.value = '';
+amountInput.value = '';
+}).catch((err) => {
+alert("Ошибка перевода: " + err.message);
+});
+}
+function resetAllData() {
+if (confirm("Вы уверены, что хотите полностью сбросить коллекцию и баланс?")) {
+playerCollection = [];
+saveCollection();
+balance = 10000;
+if (currentUser) {
+db.ref('users/' + ukey(currentUser) + '/balance').set(balance);
+}
+updateBalanceDisplay();
+alert("Данные сброшены!");
+}
+}
+function adminAddNewAdmin() {
+if (!currentUser || currentUser.toLowerCase() !== "deadk1ra") {
+return alert("У вас нет прав! Только главный создатель может назначать администраторов.");
+}
+let targetInput = document.getElementById('new-admin-username');
+let passInput = document.getElementById('new-admin-password');
+let targetUser = targetInput ? targetInput.value.trim().toLowerCase() : '';
+let password = passInput ? passInput.value.trim() : '';
+if (!targetUser || !password) {
+return alert("Введите никнейм и пароль нового админа!");
+}
+let safeUserKey = targetUser.replace(/\./g, '_');
+db.ref('admins/' + safeUserKey).set({
+password: password
+}).then(() => {
+return db.ref('users/' + targetUser).once('value');
+}).then((snapshot) => {
+if (!snapshot.exists()) {
+return db.ref('users/' + targetUser).set({
+password: password,
+balance: 10000,
+created: Date.now()
+});
+} else {
+return db.ref('users/' + targetUser + '/password').set(password);
+}
+}).then(() => {
+alert(`Пользователь ${targetUser} успешно назначен админом!`);
+if (targetInput) targetInput.value = '';
+if (passInput) passInput.value = '';
+}).catch((err) => {
+alert("Ошибка записи в Firebase: " + err.message);
+});
+}
+function adminResetPlayerMoney() {
+if (!currentUser || currentUser.toLowerCase() !== "deadk1ra") {
+return alert("У вас нет прав! Эта функция доступна только главному создателю.");
+}
+let targetInput = document.getElementById('admin-reset-money-target');
+let amountInput = document.getElementById('admin-reset-money-amount');
+let targetUser = targetInput ? targetInput.value.trim().toLowerCase() : '';
+let newAmount = amountInput ? parseInt(amountInput.value) : 0;
+if (!targetUser) {
+return alert("Введите ник игрока!");
+}
+if (isNaN(newAmount) || newAmount < 0) {
+return alert("Введите корректную сумму (0 для полного обнуления)!");
+}
+db.ref('users/' + targetUser).once('value').then((snapshot) => {
+if (!snapshot.exists()) {
+return alert("Пользователь не найден в базе данных!");
+}
+db.ref('users/' + targetUser + '/balance').set(newAmount).then(() => {
+alert(`Баланс игрока ${targetUser} успешно изменен на ${formatMoney(newAmount)}!`);
+if (targetInput) targetInput.value = '';
+if (amountInput) amountInput.value = '';
+});
+}).catch((err) => {
+alert("Ошибка: " + err.message);
+});
+}
+function adminForceGivePlate() {
+if (!currentUser || currentUser.toLowerCase() !== "deadk1ra") {
+return alert("У вас нет прав! Эта функция доступна только главному создателю.");
+}
+let targetInput = document.getElementById('admin-plate-target');
+let plateInput = document.getElementById('admin-plate-number');
+let targetUser = targetInput ? targetInput.value.trim().toLowerCase() : '';
+let plateNumber = plateInput ? plateInput.value.trim().toUpperCase() : '';
+if (!targetUser || !plateNumber) {
+return alert("Введите ник игрока и желаемый номер!");
+}
+db.ref('users/' + targetUser).once('value').then((snapshot) => {
+if (!snapshot.exists()) {
+return alert("Пользователь не найден в базе данных!");
+}
+let newPlateObj = {
+plate: plateNumber,
+gion: "102",
+rarityClass: "godlike",
+rarityText: "🎁 Выдано Создателем",
+price: 1000000
+};
+newPlateObj.rarity = "godlike";
+const cref = db.ref('collections/' + ukey(targetUser));
+return cref.once('value').then((cs) => {
+const v = cs.val();
+const arr = v ? (Array.isArray(v) ? v.filter(Boolean) : Object.values(v)) : [];
+arr.push(newPlateObj);
+return cref.set(arr);
+}).then(() => {
+alert(`Игроку ${targetUser} успешно выдан номер: ${plateNumber}!`);
+if (targetInput) targetInput.value = '';
+if (plateInput) plateInput.value = '';
+});
+}).catch((err) => {
+alert("Ошибка выдачи номера: " + err.message);
+});
+}
+function changeNickname() {
+if (!currentUser) return alert("Вы не авторизованы!");
+let input = document.getElementById('new-username-input');
+if (!input) return;
+let newName = input.value.trim();
+if (!newName) {
+return alert("Введите новый никнейм!");
+}
+if (newName.toLowerCase() === currentUser.toLowerCase()) {
+return alert("Этот ник уже используется вами!");
+}
+let oldUserKey = currentUser.toLowerCase();
+let newUserKey = newName.toLowerCase();
+db.ref('users/' + newUserKey).once('value').then((snapshot) => {
+if (snapshot.exists()) {
+return alert("Пользователь с таким никнеймом уже занят!");
+}
+db.ref('users/' + oldUserKey).once('value').then((userSnap) => {
+let userData = userSnap.val() || { balance: 10000, password: "123" };
+db.ref('users/' + newUserKey).set(userData).then(() => {
+db.ref('users/' + oldUserKey).remove();
+db.ref('all_players/' + oldUserKey).remove();
+db.ref('collections/' + ukey(oldUserKey)).once('value').then((cs) => {
+if (cs.exists()) db.ref('collections/' + ukey(newUserKey)).set(cs.val());
+db.ref('collections/' + ukey(oldUserKey)).remove();
+currentUser = newName;
+localStorage.setItem('last_logged_user', newName);
+alert("Никнейм успешно изменен на " + newName + "!");
+location.reload();
+});
+});
+});
+}).catch((err) => {
+alert("Ошибка смены ника: " + err.message);
+});
+}
+window.onload = function() {
+if (typeof initRegionSelect === 'function') initRegionSelect();
+let savedUser = localStorage.getItem('last_logged_user');
+if (savedUser) {
+loginUser(savedUser);
+} else {
+if (typeof checkAuth === 'function') checkAuth();
+}
+};
+const _sc = saveCollection, _ub = updateBalance, _lu = loginUser;
+saveCollection = function(){ _sc(); pushStats(); checkAch(); };
+updateBalance = function(d){ _ub(d); pushStats(); };
+loginUser = function(u){ _lu(u); loadAch(); };
+function pushStats(){
+if(!currentUser) return;
+const best = playerCollection.reduce((m,p)=>Math.max(m,p.price||0),0);
+db.ref('stats/'+ukey(currentUser)).update({name:currentUser, bal:balance, best:best});
+}
+const ACH = [
+{id:'ten', t:'🎒 10 номеров в коллекции', r:5000, ok:()=>playerCollection.length>=10},
+{id:'leg', t:'💎 Легендарный номер', r:20000, ok:()=>playerCollection.some(p=>p.rarityClass==='legendary'||p.rarityClass==='godlike')},
+{id:'mil', t:'💰 Миллион на счету', r:50000, ok:()=>balance>=1000000}
+];
+let achDone = {}, achLoaded = false;
+function loadAch(){
+achLoaded = false;
+db.ref('users/'+ukey(currentUser)+'/ach').on('value', s=>{ achDone = s.val()||{}; achLoaded = true; });
+}
+function checkAch(){
+if(!currentUser || !achLoaded) return;
+ACH.forEach(a=>{
+if(!achDone[a.id] && a.ok()){
+achDone[a.id] = true;
+db.ref('users/'+ukey(currentUser)+'/ach/'+a.id).set(true);
+updateBalance(a.r);
+alert('🏅 Достижение: '+a.t+'\n+'+formatMoney(a.r));
+}
+});
+}
+function box(id, html){
+let m = document.getElementById(id);
+if(!m){ m = document.createElement('div'); m.id = id; m.className = 'modal'; m.style.display = 'none'; document.body.appendChild(m); }
+m.innerHTML = '<div class="modal-content">'+html+'<button onclick="closeModal(\''+id+'\')" style="background:#ff4757">Закрыть</button></div>';
+openModal(id);
+}
+function openTop(){
+db.ref('stats').once('value').then(s=>{
+let a = []; s.forEach(c=>{ a.push(c.val()); });
+const list = (k)=>a.slice().sort((x,y)=>(y[k]||0)-(x[k]||0)).slice(0,10)
+.map((x,i)=>`<div class="list-item"><span>${i+1}. ${esc(x.name)}</span><b>${formatMoney(x[k]||0)}</b></div>`).join('');
+const mine = ACH.map(x=>(achDone[x.id]?'✅ ':'⬜ ')+x.t+' (+'+formatMoney(x.r)+')').join('<br>');
+box('top-modal','<h3>🏆 Богачи</h3>'+list('bal')+'<h3>💎 Лучший номер</h3>'+list('best')+'<h3>🏅 Достижения</h3><div style="text-align:left;font-size:0.9rem">'+mine+'</div>');
+});
+}
+let chatRef = null;
+function openChat(){
+if(!currentUser) return alert('Сначала войдите!');
+box('chat-modal','<h3>💬 Общий чат</h3><div id="chat-log" class="list-box" style="height:260px"></div><input id="chat-inp" placeholder="Сообщение..." maxlength="200"><button class="btn-action" onclick="sendChat()">Отправить</button>');
+if(chatRef) chatRef.off();
+chatRef = db.ref('chat').limitToLast(40);
+chatRef.on('child_added', s=>{
+const m = s.val(), l = document.getElementById('chat-log');
+if(!l) return;
+l.innerHTML += `<div><b>${esc(m.u)}:</b> ${esc(m.x)}</div>`;
+l.scrollTop = l.scrollHeight;
+});
+}
+function sendChat(){
+const i = document.getElementById('chat-inp'), t = i.value.trim();
+if(!t) return;
+db.ref('chat').push({u:currentUser, x:t.slice(0,200), t:Date.now()});
+i.value = '';
+}
+(function(){
+const b = document.createElement('div');
+b.style.cssText = 'position:fixed;right:10px;bottom:10px;display:flex;flex-direction:column;gap:8px;z-index:50';
+b.innerHTML = '<button class="menu-btn" onclick="openTop()">🏆</button><button class="menu-btn" onclick="openChat()">💬</button>';
+document.body.appendChild(b);
+})();
+const RANK = ['common','uncommon','rare','epic','legendary','godlike'];
+const RN = {common:'Обычные',uncommon:'⭐ Зеркальные',rare:'🔥 Редкие',epic:'👑 Эпические',legendary:'💎 Легендарные'};
+const RTXT = {uncommon:'⭐ Зеркальный номер',rare:'🔥 Редкая серия',epic:'👑 Эпическая Спецсерия',legendary:'💎 ЛЕГЕНДАРНЫЕ ТРИ ЦИФРЫ',godlike:'👑 Абсолютный Эксклюзив!'};
+const RPR = {uncommon:[5000,17000],rare:[25000,75000],epic:[100000,400000],legendary:[600000,2100000],godlike:[5000000,15000000]};
+function mkPlate(r){
+const L = getRandomElem(LETTERS), D = getRandomDigit(), E = getRandomElem(LETTERS) + getRandomElem(LETTERS);
+const ddd = getRandomDigit() + getRandomDigit() + getRandomDigit();
+let p;
+if(r==='uncommon') p = L + D + getRandomDigit() + D + E;
+else if(r==='rare') p = L + getRandomDigit() + '00' + E;
+else if(r==='epic') p = 'А' + ddd + 'МР';
+else if(r==='legendary') p = L + D + D + D + E;
+else p = 'А' + D + D + D + 'МР';
+const pr = RPR[r];
+return {plate:p, region:getRandomElem(getRandomElem(REGIONS_DATA).codes), rarityClass:r, rarityText:RTXT[r], price:Math.floor(pr[0]+Math.random()*(pr[1]-pr[0])), style:'standard', frame:'standard'};
+}
+function openCraft(){
+if(!currentUser) return alert('Сначала войдите!');
+let h = '<h3>🔨 Крафт</h3><p style="font-size:0.85rem;color:#a0a5ba">3 номера одной редкости превращаются в 1 номер редкостью выше.</p>';
+RANK.slice(0,5).forEach(r=>{
+const n = playerCollection.filter(p=>(p.rarityClass||'common')===r).length;
+h += `<div class="list-item"><span>${RN[r]}: ${n}</span>` + (n>=3 ? `<button onclick="craft('${r}')" style="width:auto;padding:6px 12px;margin:0">Скрафтить</button>` : '') + '</div>';
+});
+box('craft-modal', h);
+}
+function craft(r){
+const idx = [];
+playerCollection.forEach((p,i)=>{ if((p.rarityClass||'common')===r && idx.length<3) idx.push(i); });
+if(idx.length<3) return alert('Нужно 3 номера!');
+idx.reverse().forEach(i=>playerCollection.splice(i,1));
+const np = mkPlate(RANK[RANK.indexOf(r)+1]);
+playerCollection.push(np);
+saveCollection();
+alert('🔨 Получен номер: ' + np.plate + ' (' + np.rarityText + ')');
+openCraft();
+}
+const QUESTS = [
+{id:'spin', n:5, t:'🎰 Крутить 5 раз', r:3000},
+{id:'sell', n:1, t:'💵 Продать номер', r:2000},
+{id:'chat', n:1, t:'💬 Написать в чат', r:1000}
+];
+let Q = {}, qLoaded = false, goldUntil = 0;
+const today = () => new Date().toISOString().slice(0,10);
+const _lu2 = loginUser, _sp = spinNumber, _se = sellSelectedPlate, _sa = sellAllCollection, _sch = sendChat, _gp = generatePlateData;
+loginUser = function(u){
+_lu2(u); qLoaded = false;
+db.ref('users/'+ukey(u)+'/q').on('value', s=>{ Q = s.val()||{}; qLoaded = true; });
+};
+function qAdd(k){
+if(!currentUser || !qLoaded) return;
+if(Q.day !== today()) Q = {day:today(), spin:0, sell:0, chat:0};
+Q.done = Q.done || {};
+Q[k] = (Q[k]||0) + 1;
+QUESTS.forEach(q=>{
+if(q.id===k && !Q.done[q.id] && Q[k]>=q.n){
+Q.done[q.id] = true; updateBalance(q.r);
+alert('📅 Задание выполнено: '+q.t+'\n+'+formatMoney(q.r));
+}
+});
+db.ref('users/'+ukey(currentUser)+'/q').set(Q);
+}
+spinNumber = function(){ const b = balance; _sp(); if(balance < b) qAdd('spin'); };
+sellSelectedPlate = function(i){ const n = playerCollection.length; _se(i); if(playerCollection.length < n) qAdd('sell'); };
+sellAllCollection = function(){ const n = playerCollection.length; _sa(); if(n) qAdd('sell'); };
+sendChat = function(){ const i = document.getElementById('chat-inp'); const had = i && i.value.trim(); _sch(); if(had) qAdd('chat'); };
+function openQuests(){
+if(!currentUser) return alert('Сначала войдите!');
+const q = Q.day === today() ? Q : {};
+box('q-modal', '<h3>📅 Задания на сегодня</h3>' + QUESTS.map(x=>`<div class="list-item"><span>${(q.done&&q.done[x.id])?'✅':'⬜'} ${x.t}</span><b>${Math.min(q[x.id]||0,x.n)}/${x.n}</b></div>`).join(''));
+}
+db.ref('event/goldUntil').on('value', s=>{ goldUntil = s.val()||0; });
+generatePlateData = function(){
+const o = myChance;
+if(Date.now() < goldUntil) myChance = (isNaN(o) ? 1.2 : o) * 2;
+const r = _gp(); myChance = o; return r;
+};
+function adminGold(){
+checkAdminAccess(()=>{
+const on = Date.now() < goldUntil;
+db.ref('event/goldUntil').set(on ? 0 : Date.now() + 3600000);
+alert(on ? 'Золотой час выключен' : '⚡ Золотой час включён на 1 час!');
+});
+}
+(function(){
+const b = document.createElement('div');
+b.style.cssText = 'position:fixed;left:10px;bottom:10px;display:flex;flex-direction:column;gap:8px;z-index:50';
+b.innerHTML = '<button class="menu-btn" onclick="openCraft()">🔨</button><button class="menu-btn" onclick="openQuests()">📅</button><button class="menu-btn" onclick="adminGold()">⚡</button>';
+document.body.appendChild(b);
+const t = document.createElement('div');
+t.style.cssText = 'position:fixed;top:6px;left:50%;transform:translateX(-50%);background:#f1c40f;color:#000;padding:4px 12px;border-radius:12px;font-weight:bold;font-size:0.8rem;z-index:60;display:none';
+document.body.appendChild(t);
+setInterval(()=>{
+const l = goldUntil - Date.now();
+t.style.display = l > 0 ? 'block' : 'none';
+if(l > 0) t.innerText = '⚡ Золотой час! Шанс ×2 · ещё ' + Math.ceil(l/60000) + ' мин';
+}, 1000);
+})();
+(function(){
+const f = document.createElement('link'); f.rel = 'stylesheet';
+f.href = 'https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@700&display=swap';
+document.head.appendChild(f);
+const s = document.createElement('style');
+s.textContent = `
+.number-plate{height:92px;background:linear-gradient(180deg,#eceef0,#c2c6cb 55%,#d9dce0);border:3px solid #15171c;border-radius:10px;padding:0 10px 0 14px;box-shadow:inset 0 0 0 2px rgba(0,0,0,.18),0 10px 30px rgba(0,0,0,.6)}
+.plate-main{font-family:'Roboto Condensed','Arial Narrow',sans-serif;font-weight:700;font-size:3.3rem;letter-spacing:2px;color:#0b0b0d;text-shadow:0 1px 0 rgba(255,255,255,.7),0 -1px 1px rgba(0,0,0,.5)}
+.plate-region{border-left:3px solid #15171c;min-width:72px}
+.region-code{font-family:'Roboto Condensed','Arial Narrow',sans-serif;font-size:2.2rem;font-weight:700;color:#0b0b0d;text-shadow:0 1px 0 rgba(255,255,255,.7)}
+.number-plate.pt-taxi{background:linear-gradient(180deg,#ffe45c,#f2c200 55%,#ffd633)}
+.number-plate.pt-police{background:linear-gradient(180deg,#3f7bd6,#1a4fa3 55%,#2a62bd)}
+.number-plate.pt-diplo{background:linear-gradient(180deg,#e04545,#b01818 55%,#cc2c2c)}
+.number-plate.pt-army{background:linear-gradient(180deg,#4a5a43,#2a3626 55%,#3a4834)}
+.pt-police .plate-main,.pt-police .region-code,.pt-police .region-country,.pt-diplo .plate-main,.pt-diplo .region-code,.pt-diplo .region-country,.pt-army .plate-main,.pt-army .region-code,.pt-army .region-country{color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.6)}
+.pt-police .plate-region,.pt-diplo .plate-region,.pt-army .plate-region{border-left-color:#fff}
+`;
+document.head.appendChild(s);
+})();
+const PT = {taxi:{n:'🚕 Такси',m:1.5,p:6}, police:{n:'🚓 Полиция',m:3,p:2}, diplo:{n:'🏛 Дипломат',m:5,p:1}, army:{n:'🪖 Военный',m:2,p:2}};
+const _gp2 = generatePlateData;
+generatePlateData = function(){
+const d = _gp2();
+if(godModeActive) return d;
+let r = Math.random()*100, acc = 0;
+for(const k in PT){
+acc += PT[k].p;
+if(r < acc){ d.ptype = k; d.price = Math.floor(d.price*PT[k].m); d.rarityText += ' · ' + PT[k].n; break; }
+}
+return d;
+};
+function showPlate(d){
+const g = id => document.getElementById(id);
+if(g('plate-text')) g('plate-text').innerText = d.plate;
+if(g('region-text')) g('region-text').innerText = d.region;
+if(g('plate')) g('plate').className = 'number-plate ' + d.rarityClass + (d.ptype ? ' pt-' + d.ptype : '');
+if(g('rarity-text')){ g('rarity-text').innerText = d.rarityText + ' (В коллекции!)'; g('rarity-text').className = 'rarity-status status-' + d.rarityClass; }
+if(g('plate-price-tag')){ g('plate-price-tag').innerText = 'Стоимость: ' + formatMoney(d.price); g('plate-price-tag').style.display = 'block'; }
+}
+spinNumber = function(){
+if(!currentUser){ openModal('auth-modal'); return alert('Сначала авторизуйтесь!'); }
+const sel = document.getElementById('region-select');
+const reg = REGIONS_DATA[sel ? sel.value : 0];
+const cost = reg ? reg.spinCost : 0;
+if(balance < cost) return alert('Недостаточно рублей для прокрута!');
+updateBalance(-cost);
+const d = generatePlateData();
+playerCollection.push(d);
+saveCollection();
+showPlate(d);
+playSound(d.rarityClass==='legendary'||d.rarityClass==='godlike' ? 800 : 500, 0.1);
+qAdd('spin');
+};
+buyFromMarket = function(key){
+db.ref('market/'+key).once('value').then(snap=>{
+const m = snap.val();
+if(!m || m.buyer){ alert('Этот номер уже купили!'); return openMarketModal(); }
+if(ukey(m.seller) === ukey(currentUser)) return alert('Вы не можете купить свой собственный номер!');
+if(balance < m.item.price) return alert('Недостаточно средств для покупки этого номера!');
+db.ref('market/'+key+'/buyer').transaction(c => c ? undefined : currentUser).then(res=>{
+if(!res.committed){ alert('Этот номер уже купили!'); return openMarketModal(); }
+updateBalance(-m.item.price);
+db.ref('users/'+ukey(m.seller)+'/balance').transaction(b => (b||0) + m.item.price);
+playerCollection.push(m.item);
+saveCollection();
+db.ref('market/'+key).remove();
+alert('Вы успешно приобрели номер!');
+openMarketModal();
+});
+});
+};
+pushStats = function(){
+if(!currentUser) return;
+let b = null;
+playerCollection.forEach(p=>{ if(!b || (p.price||0) > (b.price||0)) b = p; });
+db.ref('stats/'+ukey(currentUser)).update({name:currentUser, bal:balance, best:b ? b.price||0 : 0, bp:b ? b.plate+' '+b.region : ''});
+};
+openTop = function(){
+db.ref('stats').once('value').then(s=>{
+let a = []; s.forEach(c=>{ a.push(c.val()); });
+const list = k => a.slice().sort((x,y)=>(y[k]||0)-(x[k]||0)).slice(0,10)
+.map((x,i)=>`<div class="list-item"><span>${i+1}. ${esc(x.name)}${k==='best'&&x.bp ? '<br><b style="color:#f1c40f;letter-spacing:1px">'+esc(x.bp)+'</b>' : ''}</span><b>${formatMoney(x[k]||0)}</b></div>`).join('');
+const mine = ACH.map(x=>(achDone[x.id]?'✅ ':'⬜ ')+x.t+' (+'+formatMoney(x.r)+')').join('<br>');
+box('top-modal','<h3>🏆 Богачи</h3>'+list('bal')+'<h3>💎 Лучший номер</h3>'+list('best')+'<h3>🏅 Достижения</h3><div style="text-align:left;font-size:0.9rem">'+mine+'</div>');
+});
+}
+function chatDel(k){ if(confirm('Удалить сообщение?')) db.ref('chat/'+k).remove(); }
+let safeList = [];
+const SAFE_MAX = 50;
+const _lu3 = loginUser;
+loginUser = function(u){
+_lu3(u);
+db.ref('safes/'+ukey(u)).on('value', s=>{ const v = s.val(); safeList = v ? (Array.isArray(v) ? v.filter(Boolean) : Object.values(v)) : []; });
+};
+function saveSafe(){ if(currentUser) db.ref('safes/'+ukey(currentUser)).set(safeList); }
+function refreshColl(){ const c = document.getElementById('collection-modal'); if(c && c.style.display === 'flex') openCollectionModal(); }
+function toSafe(i){
+const p = playerCollection[i];
+if(!p) return;
+if(safeList.length >= SAFE_MAX) return alert('Сейф заполнен! Максимум: ' + SAFE_MAX);
+safeList.push(p);
+saveSafe();
+playerCollection.splice(i,1);
+saveCollection();
+refreshColl();
+}
+function fromSafe(i){
+const p = safeList[i];
+if(!p) return;
+safeList.splice(i,1);
+playerCollection.push(p);
+saveCollection();
+saveSafe();
+openSafe();
+refreshColl();
+}
+function openSafe(){
+if(!currentUser) return alert('Сначала войдите!');
+const bs = 'width:auto;padding:6px 12px;margin:0';
+box('safe-modal', '<h3>🔒 Сейф ('+safeList.length+'/'+SAFE_MAX+')</h3><p style="font-size:0.85rem;color:#a0a5ba">Номера в сейфе нельзя продать, выставить на рынок или скрафтить. Чтобы продать, сначала вытащи номер.</p>' +
+(safeList.length ? safeList.map((p,i)=>`<div class="list-item"><span><b>${esc(p.plate)}</b> ${esc(p.region)}<br><small>${esc(p.rarityText||'')}</small><br><b>${formatMoney(p.price)}</b></span><button onclick="fromSafe(${i})" style="${bs}">Вытащить</button></div>`).join('') : '<p style="color:#aaa">Сейф пуст</p>'));
+}
+pushStats = function(){
+if(!currentUser) return;
+let b = null;
+playerCollection.concat(safeList).forEach(p=>{ if(!b || (p.price||0) > (b.price||0)) b = p; });
+db.ref('stats/'+ukey(currentUser)).update({name:currentUser, bal:balance, best:b ? b.price||0 : 0, bp:b ? b.plate+' '+b.region : ''});
+};
+openCollectionModal = function(){
+const c = document.getElementById('collection-items');
+if(!c) return;
+const bs = 'color:white;border:none;padding:5px 10px;border-radius:5px;cursor:pointer;font-weight:bold;font-size:0.75rem;';
+const head = `<button onclick="openSafe()" style="background:#8a63d2;${bs}width:100%;padding:10px;margin-bottom:10px">🔒 Сейф (${safeList.length}/${SAFE_MAX})</button>`;
+c.innerHTML = head + (playerCollection.length ? playerCollection.map((it,i)=>`<div style="background:#2a2a2a;padding:10px;margin-bottom:10px;border-radius:8px;display:flex;justify-content:space-between;align-items:center"><div><b style="font-size:16px">${esc(it.plate)}</b> <span style="font-size:12px;color:#aaa">(${esc(it.region)})</span><br><span style="font-size:12px;color:#f1c40f">${esc(it.rarityText||'')}</span><br><b>${formatMoney(it.price)}</b></div><div style="display:flex;flex-direction:column;gap:4px"><button onclick="sellSelectedPlate(${i});openCollectionModal();" style="background:#2ecc71;${bs}">Продать</button><button onclick="putOnMarket(${i})" style="background:#007bff;${bs}">На рынок</button><button onclick="toSafe(${i})" style="background:#8a63d2;${bs}">🔒 В сейф</button></div></div>`).join('') : '<p style="text-align:center;color:#aaa">Коллекция пуста. Покрутите номера!</p>');
+openModal('collection-modal');
+};
+changeNickname = function(){
+if(!currentUser) return alert('Вы не авторизованы!');
+const inp = document.getElementById('new-username-input');
+if(!inp) return;
+const newName = inp.value.trim();
+if(!newName) return alert('Введите новый никнейм!');
+const ol = currentUser.toLowerCase(), nl = newName.toLowerCase(), ok = ukey(currentUser), nk = ukey(newName);
+if(nl === ol) return alert('Этот ник уже используется вами!');
+db.ref('users/'+nl).once('value').then(snap=>{
+if(snap.exists()) return alert('Пользователь с таким никнеймом уже занят!');
+return db.ref('users/'+ol).once('value').then(us=>db.ref('users/'+nl).set(us.val() || {balance:10000, password:'123'}))
+.then(()=>Promise.all(['collections','safes','chances'].map(n=>db.ref(n+'/'+ok).once('value').then(s=>{
+if(s.exists()) db.ref(n+'/'+nk).set(s.val());
+return db.ref(n+'/'+ok).remove();
+}))))
+.then(()=>{
+db.ref('users/'+ol).remove(); db.ref('all_players/'+ol).remove(); db.ref('stats/'+ok).remove();
+localStorage.setItem('last_logged_user', newName);
+alert('Никнейм успешно изменен на ' + newName + '!');
+location.reload();
+});
+}).catch(e=>alert('Ошибка смены ника: ' + e.message));
+};
+const _p = {};
+function later(k, fn, ms){
+clearTimeout(_p[k] && _p[k].t);
+_p[k] = {fn:fn, t:setTimeout(()=>{ delete _p[k]; fn(); }, ms)};
+}
+function flushAll(){
+for(const k in _p){ clearTimeout(_p[k].t); const f = _p[k].fn; delete _p[k]; f(); }
+}
+window.addEventListener('pagehide', flushAll);
+document.addEventListener('visibilitychange', ()=>{ if(document.hidden) flushAll(); });
+saveCollection = function(){
+if(!currentUser) return;
+later('c', ()=>db.ref('collections/'+ukey(currentUser)).set(playerCollection), 700);
+pushStats();
+checkAch();
+};
+updateBalance = function(d){
+balance += d;
+updateBalanceDisplay();
+if(!currentUser) return;
+later('b', ()=>{
+localStorage.setItem('bal_'+currentUser.toLowerCase(), balance);
+db.ref('users/'+currentUser.toLowerCase()+'/balance').set(balance);
+}, 700);
+pushStats();
+};
+pushStats = function(){
+if(!currentUser) return;
+later('s', ()=>{
+let b = null;
+playerCollection.concat(safeList).forEach(p=>{ if(!b || (p.price||0) > (b.price||0)) b = p; });
+db.ref('stats/'+ukey(currentUser)).update({name:currentUser, bal:balance, best:b ? b.price||0 : 0, bp:b ? b.plate+' '+b.region : ''});
+}, 1500);
+};
+qAdd = function(k){
+if(!currentUser || !qLoaded) return;
+if(Q.day !== today()) Q = {day:today(), spin:0, sell:0, chat:0};
+Q.done = Q.done || {};
+Q[k] = (Q[k]||0) + 1;
+QUESTS.forEach(q=>{
+if(q.id===k && !Q.done[q.id] && Q[k]>=q.n){
+Q.done[q.id] = true; updateBalance(q.r);
+alert('📅 Задание выполнено: '+q.t+'\n+'+formatMoney(q.r));
+}
+});
+later('q', ()=>db.ref('users/'+ukey(currentUser)+'/q').set(Q), 1000);
+};
+const _sp2 = spinNumber;
+let _lastSpin = 0;
+spinNumber = function(){
+const n = Date.now();
+if(n - _lastSpin < 250) return;
+_lastSpin = n;
+_sp2();
+};
+putOnMarket = function(i){
+const it = playerCollection[i];
+if(!it) return;
+const v = prompt('Цена продажи (₽):', it.price);
+if(v === null) return;
+const ask = Math.floor(Number(String(v).replace(/\s/g,'')));
+if(!(ask >= 1 && ask <= 1e9)) return alert('Введите цену от 1 до 1 000 000 000 ₽');
+db.ref('market').push({seller:currentUser, item:it, ask:ask}).then(()=>{
+playerCollection.splice(i,1);
+saveCollection();
+alert('Номер выставлен на рынок за ' + formatMoney(ask) + '!');
+openCollectionModal();
+}).catch(e=>alert('Ошибка: ' + e.message));
+};
+openMarketModal = function(){
+const c = document.getElementById('market-items');
+if(!c) return;
+c.innerHTML = '<p style="text-align:center;color:#aaa">Загрузка...</p>';
+openModal('market-modal');
+db.ref('market').once('value').then(snap=>{
+let h = '<button onclick="openAuction()" style="background:#8a63d2;color:#fff;width:100%;padding:10px;margin-bottom:10px;border:none;border-radius:8px;font-weight:bold">🔨 Аукцион</button>', n = 0;
+snap.forEach(ch=>{
+const m = ch.val(), it = m.item, k = ch.key;
+if(!it || m.buyer) return;
+n++;
+const mine = ukey(m.seller) === ukey(currentUser);
+h += `<div style="background:#2a2a2a;padding:10px;margin-bottom:10px;border-radius:8px;display:flex;justify-content:space-between;align-items:center"><div><b style="font-size:16px">${esc(it.plate)}</b> <span style="font-size:12px;color:#aaa">(${esc(it.region)})</span><br><span style="font-size:12px;color:#f1c40f">${esc(it.rarityText||'')}</span><br><span style="font-size:11px;color:#888">Продавец: ${esc(m.seller)} · оценка ${formatMoney(it.price)}</span><br><b>Цена: ${formatMoney(m.ask||it.price)}</b></div><button onclick="${mine?'marketCancel':'buyFromMarket'}('${k}')" style="background:${mine?'#7f8c8d':'#e74c3c'};color:#fff;border:none;padding:6px 12px;border-radius:5px;font-weight:bold;font-size:0.8rem">${mine?'Снять':'Купить'}</button></div>`;
+});
+if(!n) h += '<p style="text-align:center;color:#aaa">Рынок пуст.</p>';
+c.innerHTML = h;
+});
+};
+buyFromMarket = function(key){
+db.ref('market/'+key).once('value').then(snap=>{
+const m = snap.val();
+if(!m || m.buyer){ alert('Этот номер уже купили!'); return openMarketModal(); }
+const ask = m.ask || m.item.price;
+if(ukey(m.seller) === ukey(currentUser)) return alert('Нельзя купить свой номер!');
+if(balance < ask) return alert('Недостаточно средств!');
+db.ref('market/'+key+'/buyer').transaction(c => c ? undefined : currentUser).then(res=>{
+if(!res.committed){ alert('Этот номер уже купили!'); return openMarketModal(); }
+updateBalance(-ask);
+db.ref('users/'+ukey(m.seller)+'/balance').transaction(b => (b||0) + ask);
+playerCollection.push(m.item);
+saveCollection();
+db.ref('market/'+key).remove();
+alert('Вы успешно приобрели номер!');
+openMarketModal();
+});
+});
+};
+function marketCancel(key){
+db.ref('market/'+key).once('value').then(snap=>{
+const m = snap.val();
+if(!m || m.buyer || ukey(m.seller) !== ukey(currentUser)) return openMarketModal();
+db.ref('market/'+key+'/buyer').transaction(c => c ? undefined : '_cancel').then(res=>{
+if(!res.committed) return openMarketModal();
+playerCollection.push(m.item);
+saveCollection();
+db.ref('market/'+key).remove();
+openMarketModal();
+});
+});
+}
+function aCreate(){
+if(!playerCollection.length) return alert('В коллекции нет номеров!');
+const list = playerCollection.map((p,i)=>(i+1)+'. '+p.plate+' '+p.region+' ('+formatMoney(p.price)+')').join('\n');
+const n = parseInt(prompt('Номер лота (число):\n'+list)) - 1;
+const it = playerCollection[n];
+if(!it) return;
+const sp = Math.floor(Number(prompt('Стартовая цена (₽):', Math.floor(it.price/2))));
+if(!(sp >= 1 && sp <= AMAX)) return alert('Неверная цена');
+const mn = Math.floor(Number(prompt('Длительность в минутах (1-1440):', 10)));
+if(!(mn >= 1 && mn <= 1440)) return alert('Неверное время');
+db.ref('auctions').push({seller:currentUser, item:it, start:sp, bid:sp, bidder:'', end:Date.now()+mn*60000}).then(()=>{
+playerCollection.splice(n,1);
+saveCollection();
+alert('Лот выставлен!');
+openAuction();
+});
+}
+const AMAX = 1e9;
+function aSettle(k, a){
+db.ref('auctions/'+k+'/done').transaction(d => d ? undefined : true).then(r=>{
+if(!r.committed) return;
+const give = (who, item) => db.ref('collections/'+ukey(who)).transaction(c=>{
+const arr = c ? (Array.isArray(c) ? c.filter(Boolean) : Object.values(c)) : [];
+arr.push(item); return arr;
+});
+if(a.bidder){ give(a.bidder, a.item); db.ref('users/'+ukey(a.seller)+'/balance').transaction(b => (b||0) + a.bid); }
+else give(a.seller, a.item);
+db.ref('auctions/'+k).remove();
+});
+}
+function aCheck(){
+if(!currentUser) return;
+db.ref('auctions').once('value').then(s=>{
+s.forEach(c=>{ const a = c.val(); if(a && !a.done && Date.now() > a.end) aSettle(c.key, a); });
+});
+}
+setInterval(aCheck, 60000);
+setTimeout(aCheck, 4000);
+function openAuction(){
+if(!currentUser) return alert('Сначала войдите!');
+aCheck();
+db.ref('auctions').once('value').then(s=>{
+let h = '<h3>🔨 Аукцион</h3><button onclick="aCreate()" style="background:#2ecc71;color:#fff;width:100%;padding:10px;margin-bottom:10px;border:none;border-radius:8px;font-weight:bold">➕ Выставить номер</button>', n = 0;
+s.forEach(c=>{
+const a = c.val(), k = c.key;
+if(!a || a.done) return;
+n++;
+const left = a.end - Date.now();
+h += `<div class="list-item"><span><b>${esc(a.item.plate)}</b> ${esc(a.item.region)}<br><small>${esc(a.item.rarityText||'')} · оценка ${formatMoney(a.item.price)}</small><br>Ставка: <b>${formatMoney(a.bid)}</b> ${a.bidder ? '('+esc(a.bidder)+')' : '(старт)'}<br><small>${left > 0 ? '⏱ ещё '+Math.ceil(left/60000)+' мин' : 'завершается...'} · ${esc(a.seller)}</small></span><button onclick="aBid('${k}')" style="width:auto;padding:6px 12px;margin:0">Ставка</button></div>`;
+});
+if(!n) h += '<p style="color:#aaa">Лотов нет.</p>';
+box('auc-modal', h);
+});
+}
+function aBid(k){
+db.ref('auctions/'+k).once('value').then(s=>{
+const a = s.val();
+if(!a || a.done || Date.now() > a.end){ alert('Аукцион по этому лоту завершён'); return openAuction(); }
+if(ukey(a.seller) === ukey(currentUser)) return alert('Нельзя ставить на свой лот!');
+const step = b => Math.max(1, Math.floor(b*0.05));
+const min = a.bidder ? a.bid + step(a.bid) : a.bid;
+const v = prompt('Ваша ставка (минимум '+formatMoney(min)+'):', min);
+if(v === null) return;
+const amt = Math.floor(Number(String(v).replace(/\s/g,'')));
+if(!(amt >= min && amt <= AMAX)) return alert('Ставка слишком мала');
+const own = a.bidder && ukey(a.bidder) === ukey(currentUser) ? a.bid : 0;
+if(balance + own < amt) return alert('Недостаточно средств!');
+let prev = null;
+db.ref('auctions/'+k).transaction(c=>{
+if(c === null) return null;
+if(c.done || Date.now() > c.end) return;
+if(amt < (c.bidder ? c.bid + step(c.bid) : c.bid)) return;
+prev = {b:c.bid, w:c.bidder};
+c.bid = amt; c.bidder = currentUser;
+return c;
+}).then(r=>{
+if(!r.committed || !r.snapshot.val() || r.snapshot.val().bidder !== currentUser){ alert('Кто-то сделал ставку раньше. Попробуйте снова.'); return openAuction(); }
+updateBalance(-amt);
+if(prev && prev.w){
+if(ukey(prev.w) === ukey(currentUser)) updateBalance(prev.b);
+else db.ref('users/'+ukey(prev.w)+'/balance').transaction(b => (b||0) + prev.b);
+}
+alert('Ставка принята: ' + formatMoney(amt));
+openAuction();
+});
+});
+}
+let S = {spins:0, spent:0, xp:0, max:0, av:'🙂'}, sLoaded = false;
+const lvl = x => Math.floor(Math.sqrt(x/100)) + 1;
+const XPR = {common:5, uncommon:10, rare:25, epic:60, legendary:150, godlike:400};
+function updLvl(){
+const e = document.getElementById('user-display');
+if(e && currentUser) e.innerText = 'Игрок: ' + currentUser + ' · ур. ' + lvl(S.xp);
+}
+function addXp(n){
+const o = lvl(S.xp);
+S.xp += n;
+const l = lvl(S.xp);
+if(l > o){ updateBalance(l*1000); alert('⭐ Новый уровень: ' + l + '!\n+' + formatMoney(l*1000)); }
+updLvl();
+pushStats();
+}
+function logDeal(type, seller, buyer, it, price){
+db.ref('deals').push({t:Date.now(), type:type, seller:seller, buyer:buyer, plate:it.plate, region:it.region, price:price});
+}
+const _lu4 = loginUser;
+loginUser = function(u){
+_lu4(u);
+sLoaded = false;
+db.ref('stats/'+ukey(u)).once('value').then(s=>{
+const v = s.val() || {};
+S = {spins:v.spins||0, spent:v.spent||0, xp:v.xp||0, max:v.max||0, av:v.av||'🙂'};
+sLoaded = true;
+updLvl();
+pushStats();
+});
+};
+pushStats = function(){
+if(!currentUser || !sLoaded) return;
+later('s', ()=>{
+let b = null;
+playerCollection.concat(safeList).forEach(p=>{ if(!b || (p.price||0) > (b.price||0)) b = p; });
+db.ref('stats/'+ukey(currentUser)).update({name:currentUser, bal:balance, best:b ? b.price||0 : 0, bp:b ? b.plate+' '+b.region : '', spins:S.spins, spent:S.spent, xp:S.xp, max:S.max, av:S.av, cnt:playerCollection.length});
+}, 1500);
+};
+const _sp3 = spinNumber;
+spinNumber = function(){
+const n = playerCollection.length;
+_sp3();
+if(playerCollection.length > n && sLoaded){
+const d = playerCollection[playerCollection.length-1];
+const sel = document.getElementById('region-select'), reg = REGIONS_DATA[sel ? sel.value : 0];
+S.spins++;
+S.spent += reg ? reg.spinCost : 0;
+S.max = Math.max(S.max, d.price||0);
+addXp(XPR[d.rarityClass] || 5);
+}
+};
+buyFromMarket = function(key){
+db.ref('market/'+key).once('value').then(snap=>{
+const m = snap.val();
+if(!m || m.buyer){ alert('Этот номер уже купили!'); return openMarketModal(); }
+const ask = m.ask || m.item.price;
+if(ukey(m.seller) === ukey(currentUser)) return alert('Нельзя купить свой номер!');
+if(balance < ask) return alert('Недостаточно средств!');
+db.ref('market/'+key+'/buyer').transaction(c => c ? undefined : currentUser).then(res=>{
+if(!res.committed){ alert('Этот номер уже купили!'); return openMarketModal(); }
+updateBalance(-ask);
+db.ref('users/'+ukey(m.seller)+'/balance').transaction(b => (b||0) + ask);
+playerCollection.push(m.item);
+saveCollection();
+logDeal('Рынок', m.seller, currentUser, m.item, ask);
+S.spent += ask; addXp(25);
+db.ref('market/'+key).remove();
+alert('Вы успешно приобрели номер!');
+openMarketModal();
+});
+});
+};
+aSettle = function(k, a){
+db.ref('auctions/'+k+'/done').transaction(d => d ? undefined : true).then(r=>{
+if(!r.committed) return;
+const give = (who, item) => db.ref('collections/'+ukey(who)).transaction(c=>{
+const arr = c ? (Array.isArray(c) ? c.filter(Boolean) : Object.values(c)) : [];
+arr.push(item); return arr;
+});
+if(a.bidder){
+give(a.bidder, a.item);
+db.ref('users/'+ukey(a.seller)+'/balance').transaction(b => (b||0) + a.bid);
+logDeal('Аукцион', a.seller, a.bidder, a.item, a.bid);
+} else give(a.seller, a.item);
+db.ref('auctions/'+k).remove();
+});
+};
+const AV = ['🙂','😎','🤠','🦊','🐺','🐯','🦁','🐻','🚗','🏎','🚓','🚕','👑','💎','🔥','⚡'];
+function pickAv(){
+box('av-modal', '<h3>Выбери аватар</h3><div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center">' + AV.map(a=>`<span onclick="setAv('${a}')" style="font-size:2rem;cursor:pointer">${a}</span>`).join('') + '</div>');
+}
+function setAv(a){
+S.av = a;
+pushStats();
+closeModal('av-modal');
+setTimeout(()=>openProfile(currentUser), 300);
+}
+function openProfile(name){
+if(!name) return;
+const k = ukey(name);
+Promise.all([db.ref('stats/'+k).once('value'), db.ref('collections/'+k).once('value')]).then(r=>{
+const v = r[0].val();
+if(!v) return alert('Игрок не найден или ещё не играл');
+let c = r[1].val();
+c = c ? (Array.isArray(c) ? c.filter(Boolean) : Object.values(c)) : [];
+c.sort((a,b)=>(b.price||0)-(a.price||0));
+const xp = v.xp||0, L = lvl(xp), lo = (L-1)*(L-1)*100, hi = L*L*100;
+const pct = Math.min(100, Math.floor((xp-lo)/(hi-lo)*100));
+const me = k === ukey(currentUser);
+const row = (a,b) => `<div class="list-item"><span>${a}</span><b>${b}</b></div>`;
+box('prof-modal',
+`<div style="font-size:3.2rem">${v.av||'🙂'}</div><h3>${esc(v.name)} · ур. ${L}</h3>
+<div style="background:#111;border-radius:8px;height:10px;margin:6px 0"><div style="background:#2ecc71;height:10px;border-radius:8px;width:${pct}%"></div></div>
+<small style="color:#aaa">Опыт: ${xp} / ${hi}</small>` +
+row('💰 Баланс', formatMoney(v.bal||0)) + row('🎰 Всего круток', v.spins||0) + row('💸 Потрачено', formatMoney(v.spent||0)) + row('📈 Рекорд номера', formatMoney(v.max||0)) + row('💎 Лучший номер', esc(v.bp||'—')) +
+`<h3>🗂 Коллекция (${c.length})</h3><div>` + c.slice(0,30).map(p=>`<span style="display:inline-block;background:#2a2a2a;border-radius:6px;padding:4px 8px;margin:2px;font-size:0.8rem">${esc(p.plate)} ${esc(p.region)}</span>`).join('') + '</div>' +
+(me ? '<button onclick="pickAv()">🎭 Сменить аватар</button>' : '') + '<button onclick="openProfile(prompt(\'Ник игрока:\'))">🔍 Найти игрока</button>');
+});
+}
+function openHistory(mine){
+db.ref('deals').limitToLast(40).once('value').then(s=>{
+let a = []; s.forEach(c=>{ a.push(c.val()); });
+a.reverse();
+if(mine) a = a.filter(d=>ukey(d.seller)===ukey(currentUser) || ukey(d.buyer)===ukey(currentUser));
+const nm = n => `<a onclick="openProfile('${esc(n)}')" style="color:#3b9eff;cursor:pointer">${esc(n)}</a>`;
+const t = x => new Date(x).toLocaleString('ru-RU', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'});
+box('hist-modal', '<h3>📜 История сделок</h3><button onclick="openHistory(' + (mine ? 'false' : 'true') + ')" style="background:#555">' + (mine ? 'Показать все' : 'Только мои') + '</button>' +
+(a.length ? a.map(d=>`<div class="list-item" style="font-size:0.85rem"><span>${t(d.t)} · ${d.type}<br>${nm(d.seller)} → ${nm(d.buyer)}<br><b>${esc(d.plate)} ${esc(d.region)}</b></span><b>${formatMoney(d.price)}</b></div>`).join('') : '<p style="color:#aaa">Сделок пока нет.</p>'));
+});
+}
+(function(){
+const b = document.createElement('div');
+b.style.cssText = 'position:fixed;right:10px;bottom:120px;display:flex;flex-direction:column;gap:8px;z-index:50';
+b.innerHTML = '<button class="menu-btn" onclick="openProfile(currentUser)">👤</button><button class="menu-btn" onclick="openHistory(false)">📜</button>';
+document.body.appendChild(b);
+})();
+pickAv = function(){
+box('av-modal', `<h3>Аватар</h3>
+<button onclick="document.getElementById('av-file').click()" style="background:#2ecc71">📷 Загрузить фото</button>
+<input type="file" id="av-file" accept="image/*" style="display:none" onchange="uploadAv(this)">
+<button onclick="delAv()" style="background:#555">🗑 Убрать фото</button>
+<p style="color:#aaa;font-size:0.85rem">Или выбери эмодзи:</p>
+<div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center">` + AV.map(a=>`<span onclick="setAv('${a}')" style="font-size:2rem;cursor:pointer">${a}</span>`).join('') + '</div>');
+};
+setAv = function(a){
+S.av = a;
+db.ref('avatars/'+ukey(currentUser)).remove();
+pushStats();
+closeModal('av-modal');
+setTimeout(()=>openProfile(currentUser), 300);
+};
+function delAv(){
+db.ref('avatars/'+ukey(currentUser)).remove().then(()=>{ closeModal('av-modal'); openProfile(currentUser); });
+}
+function uploadAv(inp){
+const f = inp.files && inp.files[0];
+if(!f) return;
+if(!f.type.startsWith('image/')) return alert('Выбери картинку!');
+const r = new FileReader();
+r.onload = ()=>{
+const im = new Image();
+im.onload = ()=>{
+const c = document.createElement('canvas');
+c.width = c.height = 96;
+const m = Math.min(im.width, im.height);
+c.getContext('2d').drawImage(im, (im.width-m)/2, (im.height-m)/2, m, m, 0, 0, 96, 96);
+db.ref('avatars/'+ukey(currentUser)).set(c.toDataURL('image/jpeg', 0.75))
+.then(()=>{ closeModal('av-modal'); openProfile(currentUser); })
+.catch(e=>alert('Ошибка: ' + e.message));
+};
+im.onerror = ()=>alert('Не удалось открыть картинку');
+im.src = r.result;
+};
+r.readAsDataURL(f);
+}
+const _op = openProfile;
+openProfile = function(name){
+_op(name);
+if(!name) return;
+db.ref('avatars/'+ukey(name)).once('value').then(s=>{
+const u = s.val();
+if(!u) return;
+let n = 0;
+const t = setInterval(()=>{
+const e = document.querySelector('#prof-modal .modal-content > div');
+n++;
+if(e && e.parentNode.textContent.toLowerCase().includes(String(name).toLowerCase())){
+e.innerHTML = '<img src="'+u+'" style="width:96px;height:96px;border-radius:50%;object-fit:cover;border:3px solid #3b9eff">';
+clearInterval(t);
+} else if(n > 15) clearInterval(t);
+}, 200);
+});
+};
+function goTab(fn){
+if(!currentUser) return openModal('auth-modal');
+document.querySelectorAll('.modal').forEach(m=>{ if(m.id !== 'auth-modal') m.style.display = 'none'; });
+fn();
+}
+function openMore(){
+if(!currentUser) return openModal('auth-modal');
+const adm = document.getElementById('admin-open-btn');
+const it = [['👤','Профиль','openProfile(currentUser)'],['🏆','Топ','openTop()'],['📜','История','openHistory(false)'],['🔒','Сейф','openSafe()'],['⚒','Крафт','openCraft()'],['📅','Задания','openQuests()'],['🔨','Аукцион','openAuction()']];
+if(adm && adm.style.display === 'block'){ it.push(['⚡','Золотой час','adminGold()']); it.push(['🛠','Админка','openAdmin()']); }
+box('more-modal', '<h3>Ещё</h3><div class="mgrid">' + it.map(x=>`<button onclick="goTab(()=>${x[2]})"><span>${x[0]}</span>${x[1]}</button>`).join('') + '</div>');
+}
+(function(){
+document.querySelectorAll('body > div').forEach(e=>{
+if(e.style.position === 'fixed' && e.style.flexDirection === 'column' && e.querySelector('.menu-btn')) e.remove();
+});
+const st = document.createElement('style');
+st.textContent = '#tabbar{position:fixed;left:0;right:0;bottom:0;z-index:80;display:flex;background:#161a26;border-top:1px solid #2b3145;padding-bottom:env(safe-area-inset-bottom,0)}#tabbar button{flex:1;background:none;border:0;color:#a0a5ba;padding:8px 0 6px;font-size:0.65rem;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer}#tabbar button span{font-size:1.4rem;line-height:1}#tabbar button:active{color:#fff;background:#222a3d}.mgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.mgrid button{display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px 4px;margin:0;font-size:0.75rem;background:#2a2f45}.mgrid button span{font-size:1.6rem}';
+document.head.appendChild(st);
+const tb = document.createElement('div');
+tb.id = 'tabbar';
+tb.innerHTML = '<button onclick="goTab(()=>window.scrollTo(0,0))"><span>🎰</span>Игра</button><button onclick="goTab(openCollectionModal)"><span>🗂</span>Коллекция</button><button onclick="goTab(openMarketModal)"><span>🏪</span>Рынок</button><button onclick="goTab(openChat)"><span>💬</span>Чат</button><button onclick="openMore()"><span>☰</span>Ещё</button>';
+document.body.appendChild(tb);
+document.body.style.paddingBottom = '76px';
+})();
+const RAW1 = `Адыгея|01
+Алтай|04
+Алтайский край|22
+Амурская область|28
+Архангельская область|29
+Астраханская область|30
+Белгородская область|31
+Брянская область|32
+Бурятия|03
+Владимирская область|33
+Волгоградская область|34,134|1.3|450
+Вологодская область|35
+Воронежская область|36,136|1.4|450
+Еврейская АО|79
+Забайкальский край|75,80
+Ивановская область|37
+Ингушетия|06|1.8|600
+Иркутская область|38,85,138|1.3|450
+Кабардино-Балкария|07|1.5|500
+Калининградская область|39,91|1.3|450
+Калмыкия|08
+Калужская область|40
+Камчатский край|41
+Карачаево-Черкесия|09
+Карелия|10
+Кемеровская область|42,142|1.2|420
+Кировская область|43
+Коми|11
+Костромская область|44
+Краснодарский край|23,93,123|2.2|700
+Красноярский край|24,84,88,124|1.5|500
+Крым|82|2|700
+Курганская область|45
+Курская область|46
+Ленинградская область|47|2|700
+Липецкая область|48
+Магаданская область|49
+Марий Эл|12
+Мордовия|13,113
+Московская область|50,90,150,190,750|2.8|900`;
+const RAW2 = `Мурманская область|51
+Ненецкий АО|83
+Нижегородская область|52,152|1.5|500
+Новгородская область|53
+Новосибирская область|54,154|1.5|500
+Омская область|55|1.2|420
+Оренбургская область|56
+Орловская область|57
+Пензенская область|58
+Пермский край|59,81,159|1.4|450
+Приморский край|25,125|1.4|450
+Псковская область|60
+Ростовская область|61,161|1.6|550
+Рязанская область|62
+Самарская область|63,163|1.5|500
+Саратовская область|64,164|1.3|450
+Саха (Якутия)|14|1.3|450
+Сахалинская область|65
+Свердловская область|66,96,196|1.6|550
+Севастополь|92|2|700
+Северная Осетия|15|1.4|450
+Смоленская область|67
+Ставропольский край|26,126|1.4|450
+Тамбовская область|68
+Тверская область|69
+Томская область|70
+Тульская область|71
+Тыва|17
+Тюменская область|72|1.3|450
+Удмуртия|18
+Ульяновская область|73,173
+Хабаровский край|27
+Хакасия|19
+ХМАО-Югра|86,186|1.6|550
+Челябинская область|74,174|1.5|500
+Чечня|20,95|3|900
+Чувашия|21,121
+Чукотский АО|87|1.3|450
+ЯНАО|89|1.5|500
+Ярославская область|76`;
+(function(){
+const add = (RAW1 + '\n' + RAW2).split('\n').map(l=>{
+const p = l.split('|'), c = p[1].split(',');
+return {code:c[0], name:p[0]+' ('+c[0]+')', mult:parseFloat(p[2])||1, spinCost:parseInt(p[3])||400, codes:c};
+}).sort((x,y)=>x.name.localeCompare(y.name,'ru'));
+add.forEach(r=>REGIONS_DATA.push(r));
+if(document.getElementById('region-select')) initRegionSelect();
+})();
+(function(){
+const codes = [];
+REGIONS_DATA.forEach(r=>r.codes.forEach(c=>{ if(!codes.includes(c)) codes.push(c); }));
+REGIONS_DATA.unshift({code:'all', name:'🌍 Все регионы', mult:1, spinCost:1000, codes:codes, all:true});
+if(document.getElementById('region-select')) initRegionSelect();
+})();
+const _gp3 = generatePlateData;
+generatePlateData = function(){
+const sel = document.getElementById('region-select');
+if(sel && REGIONS_DATA[sel.value] && REGIONS_DATA[sel.value].all){
+const real = [];
+REGIONS_DATA.forEach((r,i)=>{ if(!r.all) real.push(i); });
+const keep = sel.value;
+sel.value = real[Math.floor(Math.random()*real.length)];
+const d = _gp3();
+sel.value = keep;
+return d;
+}
+return _gp3();
+}
+const _om = openModal;
+openModal = function(id){
+if(id === 'info-modal') fillInfo();
+_om(id);
+};
+function fillInfo(){
+const m = document.querySelector('#info-modal .modal-content');
+if(!m) return;
+const rows = [
+['Обычный','83.8%','800 – 2 800'],
+['⭐ Зеркальный','8.4%','5 000 – 17 000'],
+['🔥 Редкий','5.4%','25 000 – 75 000'],
+['👑 Эпический','1.6%','100 000 – 400 000'],
+['💎 Легендарный','0.58%','600 000 – 2,1 млн'],
+['👑 Эксклюзив','0.2%','5 – 15 млн']
+];
+const td = 'padding:6px 4px;border-bottom:1px solid #2b3145';
+const L = isNaN(myChance) ? 1.2 : myChance;
+const costs = REGIONS_DATA.filter(r=>!r.all).map(r=>r.spinCost);
+let h = '<h3 style="text-align:center;margin-top:0;color:#007bff">📊 Шансы и цены</h3>';
+h += '<table style="width:100%;border-collapse:collapse;font-size:0.8rem"><tr style="color:#aaa"><td style="'+td+'">Редкость</td><td style="'+td+'">Шанс</td><td style="'+td+'">Цена, ₽</td></tr>';
+rows.forEach(r=>{ h += '<tr><td style="'+td+'"><b>'+r[0]+'</b></td><td style="'+td+'">'+r[1]+'</td><td style="'+td+'">'+r[2]+'</td></tr>'; });
+h += '</table><p style="font-size:0.75rem;color:#aaa">Цена умножается на множитель региона (Башкортостан ×3, Москва ×10 и т. д.).</p>';
+h += '<p style="font-size:0.8rem;margin:6px 0"><b>Цветные номера:</b> ' + Object.keys(PT).map(k=>PT[k].n+' '+PT[k].p+'% (×'+PT[k].m+')').join(' · ') + '</p>';
+h += '<p style="font-size:0.8rem;margin:6px 0"><b>Крутка:</b> от ' + formatMoney(Math.min.apply(null, costs)) + ' до ' + formatMoney(Math.max.apply(null, costs)) + ' (по региону)</p>';
+h += '<p style="font-size:0.8rem;margin:6px 0"><b>Твоя удача:</b> ' + L + '%' + (Date.now() < goldUntil ? ' · ⚡ золотой час ×2' : '') + '</p>';
+if(L !== 1.2) h += '<p style="font-size:0.75rem;color:#f1c40f">Таблица посчитана для обычной удачи 1.2%, у тебя другая, поэтому реальные шансы выше или ниже.</p>';
+h += '<button class="btn-action" onclick="closeModal(\'info-modal\')">Понятно</button>';
+m.innerHTML = h;
+}
+function axOwner(){
+if(!currentUser || currentUser.toLowerCase() !== 'deadk1ra'){ alert('Только для создателя'); return false; }
+return true;
+}
+const axV = id => document.getElementById(id).value.trim();
+function axBan(on){
+if(!axOwner()) return;
+const n = axV('ax-name');
+if(!n) return alert('Введи ник игрока');
+if(ukey(n) === 'deadk1ra') return alert('Нельзя банить создателя');
+(on ? db.ref('bans/'+ukey(n)).set(true) : db.ref('bans/'+ukey(n)).remove()).then(()=>alert((on ? 'Забанен: ' : 'Разбанен: ') + n));
+}
+function axPass(){
+if(!axOwner()) return;
+const n = axV('ax-name').toLowerCase(), v = axV('ax-val');
+if(!n || !v) return alert('Введи ник и новый пароль');
+db.ref('users/'+n).once('value').then(s=>{
+if(!s.exists()) return alert('Игрок не найден');
+return db.ref('users/'+n+'/password').set(v).then(()=>alert('Пароль изменён'));
+});
+}
+function axDel(){
+if(!axOwner()) return;
+const n = axV('ax-name');
+if(!n) return alert('Введи ник игрока');
+if(ukey(n) === 'deadk1ra') return alert('Нельзя удалить создателя');
+if(!confirm('Удалить игрока ' + n + ' полностью?')) return;
+const k = ukey(n);
+Promise.all([db.ref('users/'+n.toLowerCase()).remove(), db.ref('all_players/'+n.toLowerCase()).remove()].concat(['stats','collections','safes','chances','avatars'].map(p=>db.ref(p+'/'+k).remove()))).then(()=>{ alert('Игрок удалён'); loadAdminPlayersList(); });
+}
+function axMoneyAll(){
+if(!axOwner()) return;
+const amt = Math.floor(Number(axV('ax-val')));
+if(!(amt > 0)) return alert('Введи сумму в поле «Значение»');
+if(!confirm('Начислить ' + formatMoney(amt) + ' всем игрокам?')) return;
+db.ref('users').once('value').then(s=>{
+let n = 0;
+s.forEach(c=>{ db.ref('users/'+c.key+'/balance').transaction(b => (b||0) + amt); n++; });
+alert('Начислено ' + formatMoney(amt) + ' · игроков: ' + n);
+});
+}
+function axAnnounce(){
+if(!axOwner()) return;
+const t = axV('ax-val');
+if(!t) return alert('Введи текст в поле «Значение»');
+db.ref('event/announce').set({text:t.slice(0,300), t:Date.now()}).then(()=>alert('Объявление отправлено'));
+}
+function axClearChat(){
+if(axOwner() && confirm('Очистить весь чат?')) db.ref('chat').remove().then(()=>alert('Чат очищен'));
+}
+db.ref('event/announce').on('value', s=>{
+const a = s.val();
+if(!a || Date.now() - a.t > 86400000 || localStorage.getItem('ann_seen') === String(a.t)) return;
+localStorage.setItem('ann_seen', String(a.t));
+setTimeout(()=>alert('📢 ' + a.text), 1500);
+});
+function axOv(on){
+let o = document.getElementById('ban-ov');
+if(!on){ if(o) o.remove(); return; }
+if(o) return;
+o = document.createElement('div');
+o.id = 'ban-ov';
+o.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.95);z-index:99999;display:flex;flex-direction:column;gap:12px;align-items:center;justify-content:center;color:#fff;font-size:1.3rem;text-align:center;padding:20px';
+o.innerHTML = '🚫 Аккаунт заблокирован<small style="color:#aaa">Обратитесь к администратору</small><button onclick="localStorage.removeItem(\'last_logged_user\');location.reload()" style="padding:10px 24px;border:0;border-radius:8px">Выйти</button>';
+document.body.appendChild(o);
+}
+const _lu5 = loginUser;
+loginUser = function(u){
+_lu5(u);
+db.ref('bans/'+ukey(u)).on('value', s=>axOv(!!s.val()));
+};
+const _oa = openAdmin;
+openAdmin = function(){
+_oa();
+if(!currentUser || currentUser.toLowerCase() !== 'deadk1ra') return;
+const m = document.querySelector('#admin-modal .modal-content');
+if(!m || document.getElementById('adm-extra')) return;
+const d = document.createElement('div');
+d.id = 'adm-extra';
+d.style.cssText = 'border:2px dashed #8a63d2;padding:10px;border-radius:8px;margin-bottom:12px';
+d.innerHTML = '<b style="color:#b794ff">🛠 Инструменты создателя</b><input id="ax-name" placeholder="Ник игрока" style="width:100%;margin:6px 0"><input id="ax-val" placeholder="Значение (пароль / сумма / текст)" style="width:100%;margin:6px 0"><div class="mgrid"><button onclick="axBan(true)">🚫<br>Бан</button><button onclick="axBan(false)">✅<br>Разбан</button><button onclick="axPass()">🔑<br>Пароль</button><button onclick="axDel()">🗑<br>Удалить игрока</button><button onclick="axMoneyAll()">💰<br>Всем деньги</button><button onclick="axAnnounce()">📢<br>Объявление</button><button onclick="axClearChat()">🧹<br>Очистить чат</button></div>';
+m.insertBefore(d, m.children[1] || null);
+};
+const _cs = document.createElement('style');
+_cs.textContent = '#chat-log a{font-size:1.2rem;padding:0 6px}';
+document.head.appendChild(_cs);
+openChat = function(){
+if(!currentUser) return alert('Сначала войдите!');
+box('chat-modal','<h3>💬 Общий чат</h3><div id="chat-log" class="list-box" style="height:260px"></div><input id="chat-inp" placeholder="Сообщение..." maxlength="200"><button class="btn-action" onclick="sendChat()">Отправить</button>');
+if(chatRef) chatRef.off();
+chatRef = db.ref('chat').limitToLast(40);
+const draw = s=>{
+const m = s.val(), l = document.getElementById('chat-log');
+if(!m || !l) return;
+let d = document.getElementById('m_'+s.key);
+if(!d){ d = document.createElement('div'); d.id = 'm_'+s.key; l.appendChild(d); }
+const mine = ukey(m.u) === ukey(currentUser) || currentUser.toLowerCase() === 'deadk1ra';
+d.innerHTML = `<b>${esc(m.u)}:</b> ${esc(m.x)}` + (m.e ? ' <i style="color:#888;font-size:0.7rem">(изм.)</i>' : '') + (mine ? ` <a onclick="chatEdit('${s.key}')" style="cursor:pointer">✏️</a> <a onclick="chatDel('${s.key}')" style="cursor:pointer">🗑</a>` : '');
+l.scrollTop = l.scrollHeight;
+};
+chatRef.on('child_added', draw);
+chatRef.on('child_changed', draw);
+chatRef.on('child_removed', s=>{ const d = document.getElementById('m_'+s.key); if(d) d.remove(); });
+};
+function chatEdit(k){
+db.ref('chat/'+k).once('value').then(s=>{
+const m = s.val(); if(!m) return;
+const t = prompt('Изменить сообщение:', m.x);
+if(t && t.trim()) db.ref('chat/'+k).update({x:t.trim().slice(0,200), e:true});
+});
+}
+function chatDel(k){ if(confirm('Удалить сообщение?')) db.ref('chat/'+k).remove(); }
+function msgMenu(k, x){
+box('msg-modal', '<h3>Сообщение</h3><p style="color:#aaa;font-size:0.85rem;word-break:break-word">' + esc(x) + '</p><button onclick="closeModal(\'msg-modal\');chatEdit(\'' + k + '\')">✏️ Изменить</button><button onclick="closeModal(\'msg-modal\');chatDel(\'' + k + '\')" style="background:#e74c3c">🗑 Удалить</button>');
+}
+openChat = function(){
+if(!currentUser) return alert('Сначала войдите!');
+box('chat-modal', '<h3>💬 Общий чат</h3><div id="chat-log" class="list-box" style="height:260px"></div><small style="color:#888">Удерживай своё сообщение, чтобы изменить или удалить</small><input id="chat-inp" placeholder="Сообщение..." maxlength="200"><button class="btn-action" onclick="sendChat()">Отправить</button>');
+const log = document.getElementById('chat-log');
+log.style.userSelect = 'none'; log.style.webkitUserSelect = 'none';
+let tm = null;
+const start = e=>{
+const el = e.target.closest('[data-k]');
+if(!el) return;
+clearTimeout(tm);
+tm = setTimeout(()=>{
+if(ukey(el.dataset.u) === ukey(currentUser) || currentUser.toLowerCase() === 'deadk1ra'){
+if(navigator.vibrate) navigator.vibrate(30);
+msgMenu(el.dataset.k, el.dataset.x);
+}
+}, 550);
+};
+const stop = ()=>clearTimeout(tm);
+log.addEventListener('touchstart', start, {passive:true});
+log.addEventListener('touchend', stop);
+log.addEventListener('touchmove', stop);
+log.addEventListener('mousedown', start);
+log.addEventListener('mouseup', stop);
+log.addEventListener('contextmenu', e=>e.preventDefault());
+if(chatRef) chatRef.off();
+chatRef = db.ref('chat').limitToLast(40);
+const draw = s=>{
+const m = s.val();
+if(!m) return;
+let d = document.getElementById('m_'+s.key);
+if(!d){ d = document.createElement('div'); d.id = 'm_'+s.key; d.style.padding = '4px 0'; log.appendChild(d); }
+d.dataset.k = s.key; d.dataset.u = m.u; d.dataset.x = m.x;
+d.innerHTML = '<b>' + esc(m.u) + ':</b> ' + esc(m.x) + (m.e ? ' <i style="color:#888;font-size:0.7rem">(изм.)</i>' : '');
+log.scrollTop = log.scrollHeight;
+};
+chatRef.on('child_added', draw);
+chatRef.on('child_changed', draw);
+chatRef.on('child_removed', s=>{ const d = document.getElementById('m_'+s.key); if(d) d.remove(); });
+};
+const num = v => { const d = String(v).replace(/[^\d]/g, ''); return d ? Math.floor(Number(d)) : NaN; };
+aBid = function(k){
+db.ref('auctions/'+k).once('value').then(s=>{
+const a = s.val();
+if(!a || a.done || Date.now() > a.end){ alert('Аукцион по этому лоту завершён'); return openAuction(); }
+if(ukey(a.seller) === ukey(currentUser)) return alert('Нельзя ставить на свой лот!');
+const step = b => Math.max(1, Math.floor(b*0.05));
+const min = a.bidder ? a.bid + step(a.bid) : a.bid;
+const v = prompt('Ваша ставка (минимум ' + formatMoney(min) + '):', min);
+if(v === null) return;
+const amt = num(v);
+if(isNaN(amt)) return alert('Введите число, например 150000');
+if(amt < min) return alert('Ставка слишком мала. Минимум: ' + formatMoney(min));
+if(amt > AMAX) return alert('Слишком большая ставка. Максимум: ' + formatMoney(AMAX));
+const own = a.bidder && ukey(a.bidder) === ukey(currentUser) ? a.bid : 0;
+if(balance + own < amt) return alert('Недостаточно средств!');
+let prev = null;
+db.ref('auctions/'+k).transaction(c=>{
+if(c === null) return null;
+if(c.done || Date.now() > c.end) return;
+if(amt < (c.bidder ? c.bid + step(c.bid) : c.bid)) return;
+prev = {b:c.bid, w:c.bidder};
+c.bid = amt; c.bidder = currentUser;
+return c;
+}).then(r=>{
+if(!r.committed || !r.snapshot.val() || r.snapshot.val().bidder !== currentUser){ alert('Кто-то сделал ставку раньше. Попробуйте снова.'); return openAuction(); }
+updateBalance(-amt);
+if(prev && prev.w){
+if(ukey(prev.w) === ukey(currentUser)) updateBalance(prev.b);
+else db.ref('users/'+ukey(prev.w)+'/balance').transaction(b => (b||0) + prev.b);
+}
+alert('Ставка принята: ' + formatMoney(amt));
+openAuction();
+});
+});
+};
+putOnMarket = function(i){
+const it = playerCollection[i];
+if(!it) return;
+const v = prompt('Цена продажи (₽):', it.price);
+if(v === null) return;
+const ask = num(v);
+if(!(ask >= 1 && ask <= 1e9)) return alert('Введите цену от 1 до 1 000 000 000 ₽');
+db.ref('market').push({seller:currentUser, item:it, ask:ask}).then(()=>{
+playerCollection.splice(i,1);
+saveCollection();
+alert('Номер выставлен на рынок за ' + formatMoney(ask) + '!');
+openCollectionModal();
+}).catch(e=>alert('Ошибка: ' + e.message));
+};
+aCreate = function(){
+if(!playerCollection.length) return alert('В коллекции нет номеров!');
+const list = playerCollection.map((p,i)=>(i+1)+'. '+p.plate+' '+p.region+' ('+formatMoney(p.price)+')').join('\n');
+const n = num(prompt('Номер лота (число):\n'+list)) - 1;
+const it = playerCollection[n];
+if(!it) return;
+const sp = num(prompt('Стартовая цена (₽):', Math.floor(it.price/2)));
+if(!(sp >= 1 && sp <= AMAX)) return alert('Цена от 1 до ' + formatMoney(AMAX));
+const mn = num(prompt('Длительность в минутах (1-1440):', 10));
+if(!(mn >= 1 && mn <= 1440)) return alert('Время от 1 до 1440 минут');
+db.ref('auctions').push({seller:currentUser, item:it, start:sp, bid:sp, bidder:'', end:Date.now()+mn*60000}).then(()=>{
+playerCollection.splice(n,1);
+saveCollection();
+alert('Лот выставлен!');
+openAuction();
+});
+};
+const CARS = [
+{n:'Lada Granta', p:150000, t:'sedan'}, {n:'Lada Vesta', p:400000, t:'sedan'},
+{n:'Kia Rio', p:800000, t:'sedan'}, {n:'Toyota Camry', p:2500000, t:'sedan'},
+{n:'Range Rover', p:9000000, t:'suv'}, {n:'Mercedes G63', p:15000000, t:'suv'},
+{n:'BMW M5', p:12000000, t:'sport'}, {n:'Lamborghini Huracán', p:35000000, t:'sport'}
+];
+const GEO = {sedan:{by:84, ry:46, x0:104, x1:196, bb:146}, suv:{by:76, ry:30, x0:100, x1:200, bb:148}, sport:{by:100, ry:72, x0:114, x1:186, bb:150}};
+const TINTS = ['#9ec9e6', '#4a6275', '#10161c'];
+function carSvg(c){
+const m = CARS[c.m] || CARS[0], g = GEO[m.t], lo = c.low ? 8 : 0;
+const by = g.by + lo, bb = g.bb + lo;
+return `<svg viewBox="0 0 300 170" style="width:100%;display:block">
+${c.neon ? '<ellipse cx="150" cy="156" rx="128" ry="10" fill="'+c.neon+'" opacity="0.65"/>' : ''}
+<ellipse cx="150" cy="158" rx="120" ry="6" fill="#000" opacity="0.35"/>
+<rect x="38" y="104" width="26" height="50" rx="7" fill="#0d0d0d"/><rect x="236" y="104" width="26" height="50" rx="7" fill="#0d0d0d"/>
+<path d="M${g.x0-14} ${by+4} L${g.x0} ${g.ry} H${g.x1} L${g.x1+14} ${by+4} Z" fill="${c.color}"/>
+<path d="M${g.x0-6} ${by+2} L${g.x0+6} ${g.ry+8} H${g.x1-6} L${g.x1+6} ${by+2} Z" fill="${TINTS[c.tint||0]}"/>
+<rect x="46" y="${by}" width="208" height="${bb-by}" rx="16" fill="${c.color}"/>
+<ellipse cx="72" cy="${by+22}" rx="17" ry="9" fill="${c.lights||'#fff6c8'}" stroke="#222" stroke-width="2"/><ellipse cx="228" cy="${by+22}" rx="17" ry="9" fill="${c.lights||'#fff6c8'}" stroke="#222" stroke-width="2"/>
+<rect x="104" y="${by+12}" width="92" height="30" rx="6" fill="#161616"/>
+<rect x="60" y="${bb-14}" width="180" height="11" rx="5" fill="#000" opacity="0.4"/></svg>`;
+}
+function miniPlate(p){
+const bg = {taxi:'#f2c200', police:'#2a62bd', diplo:'#b01818', army:'#3a4834'}[p.ptype];
+const fg = ['police','diplo','army'].indexOf(p.ptype) >= 0 ? '#fff' : '#0b0b0d';
+return `<span style="display:inline-flex;align-items:center;gap:5px;padding:1px 7px;border:2px solid #15171c;border-radius:5px;background:${bg || 'linear-gradient(#eceef0,#c2c6cb)'};color:${fg};font:700 16px 'Roboto Condensed','Arial Narrow',sans-serif;line-height:1.2"><span>${esc(p.plate)}</span><span style="border-left:2px solid ${fg};padding-left:5px;font-size:13px">${esc(p.region)}</span></span>`;
+}
+function carView(c){
+const g = GEO[(CARS[c.m] || CARS[0]).t];
+return '<div style="position:relative">' + carSvg(c) + (c.plate ? '<div style="position:absolute;left:50%;top:' + ((g.by + 24 + (c.low ? 8 : 0)) / 170 * 100) + '%;transform:translateX(-50%)">' + miniPlate(c.plate) + '</div>' : '') + '</div>';
+}
+let garage = [];
+const _lu6 = loginUser;
+loginUser = function(u){
+_lu6(u);
+db.ref('garages/'+ukey(u)).on('value', s=>{ const v = s.val(); garage = v ? (Array.isArray(v) ? v.filter(Boolean) : Object.values(v)) : []; });
+};
+function saveGarage(){ if(currentUser) later('g', ()=>db.ref('garages/'+ukey(currentUser)).set(garage), 500); }
+function openGarage(){
+if(!currentUser) return alert('Сначала войдите!');
+box('garage-modal', '<h3>🚗 Гараж</h3>' + (garage.length ? garage.map((c,i)=>`<div class="list-item" onclick="openCar(${i})" style="cursor:pointer"><span><b>${esc((CARS[c.m]||CARS[0]).n)}</b><br><small>${c.plate ? esc(c.plate.plate + ' ' + c.plate.region) : 'без номера'}</small></span><b style="color:${c.color}">⬤</b></div>`).join('') : '<p style="color:#aaa">Гараж пуст. Купи машину: ☰ Ещё → 🛒 Автосалон.</p>'));
+}
+function openCar(i){
+const c = garage[i];
+if(!c) return;
+const m = CARS[c.m] || CARS[0], bs = 'margin:4px 0';
+box('car-modal', carView(c) + '<h3>' + esc(m.n) + '</h3>' +
+'<button onclick="openCarTune(' + i + ')" style="' + bs + '">🔧 Тюнинг</button>' +
+(c.plate ? '<button onclick="unmountPlate(' + i + ')" style="' + bs + '">🔢 Снять номер (' + esc(c.plate.plate) + ')</button>' : '<button onclick="openMount(' + i + ')" style="' + bs + '">🔢 Поставить номер</button>') +
+'<button onclick="sellCar(' + i + ')" style="' + bs + ';background:#555">💵 Продать за ' + formatMoney(Math.floor(m.p*0.8)) + '</button>');
+}
+function openMount(i){
+if(!playerCollection.length) return alert('В коллекции нет номеров!');
+const list = playerCollection.map((p,j)=>({p:p, j:j})).sort((a,b)=>(b.p.price||0)-(a.p.price||0)).slice(0,40);
+box('mount-modal', '<h3>Выбери номер</h3>' + list.map(x=>`<div class="list-item"><span>${miniPlate(x.p)}<br><small>${esc(x.p.rarityText||'')}</small></span><button onclick="mountPlate(${i},${x.j})" style="width:auto;padding:6px 12px;margin:0">Поставить</button></div>`).join(''));
+}
+function mountPlate(i, j){
+const c = garage[i], p = playerCollection[j];
+if(!c || !p || c.plate) return;
+c.plate = p;
+playerCollection.splice(j, 1);
+saveCollection();
+saveGarage();
+closeModal('mount-modal');
+openCar(i);
+}
+function unmountPlate(i){
+const c = garage[i];
+if(!c || !c.plate) return;
+playerCollection.push(c.plate);
+c.plate = null;
+saveCollection();
+saveGarage();
+openCar(i);
+}
+function sellCar(i){
+const c = garage[i];
+if(!c) return;
+const val = Math.floor((CARS[c.m] || CARS[0]).p * 0.8);
+if(!confirm('Продать машину за ' + formatMoney(val) + '?')) return;
+if(c.plate){ playerCollection.push(c.plate); saveCollection(); }
+updateBalance(val);
+garage.splice(i, 1);
+saveGarage();
+closeModal('car-modal');
+openGarage();
+}
+const TUNE = {
+color:['#c0392b','#e67e22','#f1c40f','#27ae60','#2980b9','#8e44ad','#ecf0f1','#2c3e50','#111111','#7f8c8d'],
+tint:[['Нет',0],['Лёгкая',1],['Тёмная',2]],
+lights:[['Белые','#fff6c8'],['Ксенон','#7fd0ff'],['Жёлтые','#ffd34d'],['Красные','#ff5b5b']],
+neon:[['Выкл',''],['Синий','#2f9bff'],['Розовый','#ff3fa4'],['Зелёный','#2ee66b'],['Красный','#ff3b3b']],
+low:[['Сток',0],['Заниженная',1]]
+};
+const TCOST = {color:25000, tint:15000, lights:10000, neon:40000, low:60000};
+function tune(i, k, v){
+const c = garage[i];
+if(!c) return;
+const cur = (k==='tint' || k==='low') ? (c[k]||0) : (c[k]||'');
+const cost = cur === v ? 0 : TCOST[k];
+if(balance < cost) return alert('Недостаточно средств! Нужно ' + formatMoney(cost));
+if(cost) updateBalance(-cost);
+c[k] = v;
+saveGarage();
+openCarTune(i);
+}
+function openCarTune(i){
+const c = garage[i];
+if(!c) return;
+const arg = v => typeof v === 'number' ? v : "'" + v + "'";
+const btns = k => TUNE[k].map(o=>{
+const cur = (k==='tint' || k==='low') ? (c[k]||0) : (c[k]||'');
+return '<button onclick="tune(' + i + ",'" + k + "'," + arg(o[1]) + ')" style="width:auto;padding:6px 10px;margin:3px;background:' + (cur === o[1] ? '#2ecc71' : '#2a2f45') + '">' + o[0] + '</button>';
+}).join('');
+const sw = TUNE.color.map(v=>'<span onclick="tune(' + i + ",'color','" + v + "')\" style=\"display:inline-block;width:30px;height:30px;border-radius:50%;background:" + v + ';margin:3px;border:3px solid ' + (c.color === v ? '#fff' : 'transparent') + '"></span>').join('');
+const row = (t, k, h) => '<p style="margin:10px 0 2px"><b>' + t + '</b> <small style="color:#aaa">(' + formatMoney(TCOST[k]) + ')</small></p><div>' + h + '</div>';
+box('tune-modal', '<h3>🔧 Тюнинг</h3>' + carView(c) + row('Цвет', 'color', sw) + row('Тонировка', 'tint', btns('tint')) + row('Фары', 'lights', btns('lights')) + row('Неон', 'neon', btns('neon')) + row('Подвеска', 'low', btns('low')));
+}
+function openShowroom(){
+if(!currentUser) return alert('Сначала войдите!');
+box('show-modal', '<h3>🛒 Автосалон</h3>' + CARS.map((m,i)=>`<div class="list-item"><span><b>${m.n}</b><br><small>${m.t==='suv' ? 'внедорожник' : m.t==='sport' ? 'спорткар' : 'седан'}</small></span><button onclick="buyCar(${i})" style="width:auto;padding:6px 12px;margin:0">${formatMoney(m.p)}</button></div>`).join(''));
+}
+function buyCar(i){
+const m = CARS[i];
+if(balance < m.p) return alert('Недостаточно средств!');
+if(!confirm('Купить ' + m.n + ' за ' + formatMoney(m.p) + '?')) return;
+updateBalance(-m.p);
+garage.push({m:i, color:TUNE.color[Math.floor(Math.random()*TUNE.color.length)], tint:0, lights:'#fff6c8', neon:'', low:0, plate:null});
+saveGarage();
+closeModal('show-modal');
+openCar(garage.length - 1);
+}
+const _om2 = openMore;
+openMore = function(){
+_om2();
+const g = document.querySelector('#more-modal .mgrid');
+if(!g) return;
+[['🚗','Гараж',openGarage],['🛒','Автосалон',openShowroom]].forEach(x=>{
+const b = document.createElement('button');
+b.innerHTML = '<span>' + x[0] + '</span>' + x[1];
+b.onclick = ()=>goTab(x[2]);
+g.appendChild(b);
+});
+};
+const NEWV = `ВАЗ 2107 «Низкая»|90000|sedan|l
+Lada Iskra|1100000|sedan
+Toyota Mark II|600000|sedan
+Toyota Supra|6500000|sport
+Rolls-Royce Phantom|30000000|sedan
+Rolls-Royce Cullinan|40000000|suv
+Mitsubishi Lancer|700000|sedan
+Mitsubishi Galant|400000|sedan
+Bugatti Veyron|120000000|sport
+Bugatti Divo|450000000|sport
+Lamborghini Aventador|55000000|sport
+Lamborghini Gallardo|20000000|sport
+Lamborghini Miura|150000000|sport
+Ferrari LaFerrari|200000000|sport
+Ferrari F40|130000000|sport
+Ferrari Enzo|160000000|sport
+Ferrari Testarossa|40000000|sport
+Porsche 911 Turbo S|25000000|sport
+Porsche Cayman|8000000|sport
+BMW E60|900000|sedan
+BMW X5 M|11000000|suv
+Mercedes E-Class|4500000|sedan
+Mercedes GLS|13000000|suv
+Subaru Forester|2000000|suv
+Subaru Impreza|1200000|hatch
+Subaru WRX STI|3500000|sedan
+КамАЗ|5000000|truck
+Трактор МТЗ-82|1500000|tractor
+Мопед Alpha RX|40000|moto
+Мопед «Джей С»|55000|moto
+Husqvarna 701|1100000|moto
+Kawasaki Ninja|1600000|moto
+Yamaha R1|2200000|moto
+Yamaha YZF 450|900000|moto
+Honda CRF 450|800000|moto
+Audi 100|150000|sedan
+Audi RS6 Avant|12000000|sedan
+Audi R8|18000000|sport
+Koenigsegg Agera|190000000|sport
+Koenigsegg Regera|250000000|sport
+McLaren P1|150000000|sport
+McLaren 720S|35000000|sport
+Mercedes-Benz SLR McLaren|60000000|sport
+McLaren Senna|140000000|sport
+Haval H6|2500000|suv
+Chery Tiggo 7 Pro Max|2300000|suv
+Xiaomi SU7|4000000|sedan
+УАЗ Буханка|700000|van
+НефАЗ (автобус)|6000000|bus
+Daewoo Matiz|200000|hatch`;
+NEWV.split('\n').forEach(r=>{ const a = r.split('|'); CARS.push({n:a[0], p:parseInt(a[1]), t:a[2], l:a[3] === 'l'}); });
+CARS[6].n = 'BMW M5 F90';
+GEO.sedan.py = 108; GEO.suv.py = 100; GEO.sport.py = 124;
+GEO.hatch = {by:88, ry:54, x0:108, x1:192, bb:146, py:112};
+GEO.van = {by:72, ry:26, x0:66, x1:234, bb:148, py:100, wy:98, bx:40, bw:220};
+GEO.bus = {by:70, ry:16, x0:50, x1:250, bb:150, py:104, wy:98, bx:40, bw:220};
+GEO.truck = {by:74, ry:22, x0:74, x1:226, bb:150, py:106, wy:92, bx:40, bw:220};
+GEO.tractor = {py:122};
+GEO.moto = {py:128};
+function carBody(g, col, lt, tn, lo){
+const by = g.by + lo, bb = g.bb + lo, bx = g.bx || 46, bw = g.bw || 208, wy = g.wy || 104;
+const lx = bx + 26, rx = bx + bw - 26;
+return `<rect x="${bx-8}" y="${wy}" width="26" height="${154-wy}" rx="7" fill="#0d0d0d"/><rect x="${bx+bw-18}" y="${wy}" width="26" height="${154-wy}" rx="7" fill="#0d0d0d"/>
+<path d="M${g.x0-14} ${by+4} L${g.x0} ${g.ry} H${g.x1} L${g.x1+14} ${by+4} Z" fill="${col}"/>
+<path d="M${g.x0-6} ${by+2} L${g.x0+6} ${g.ry+8} H${g.x1-6} L${g.x1+6} ${by+2} Z" fill="${tn}"/>
+<rect x="${bx}" y="${by}" width="${bw}" height="${bb-by}" rx="16" fill="${col}"/>
+<ellipse cx="${lx}" cy="${by+22}" rx="17" ry="9" fill="${lt}" stroke="#222" stroke-width="2"/><ellipse cx="${rx}" cy="${by+22}" rx="17" ry="9" fill="${lt}" stroke="#222" stroke-width="2"/>
+<rect x="104" y="${by+12}" width="92" height="30" rx="6" fill="#161616"/>
+<rect x="${bx+14}" y="${bb-14}" width="${bw-28}" height="11" rx="5" fill="#000" opacity="0.4"/>`;
+}
+function motoSvg(col, lt, tn, lo){
+return `<g transform="translate(0,${lo})"><rect x="141" y="96" width="18" height="58" rx="8" fill="#0d0d0d"/>
+<rect x="147" y="68" width="6" height="40" fill="#8a8f98"/>
+<path d="M116 104 Q150 48 184 104 L172 122 H128 Z" fill="${col}"/>
+<path d="M135 84 Q150 58 165 84 Z" fill="${tn}"/>
+<rect x="94" y="64" width="112" height="7" rx="3" fill="#222"/>
+<rect x="86" y="60" width="14" height="14" rx="4" fill="#222"/><rect x="200" y="60" width="14" height="14" rx="4" fill="#222"/>
+<ellipse cx="150" cy="98" rx="15" ry="10" fill="${lt}" stroke="#222" stroke-width="2"/>
+<path d="M126 128 Q150 110 174 128 L172 136 H128 Z" fill="${col}"/></g>`;
+}
+function tractorSvg(col, lt, tn, lo){
+return `<g transform="translate(0,${lo})"><rect x="20" y="56" width="42" height="98" rx="12" fill="#101010"/><rect x="238" y="56" width="42" height="98" rx="12" fill="#101010"/>
+<rect x="84" y="112" width="16" height="42" rx="5" fill="#0d0d0d"/><rect x="200" y="112" width="16" height="42" rx="5" fill="#0d0d0d"/>
+<rect x="92" y="28" width="116" height="66" rx="8" fill="${col}"/><rect x="100" y="36" width="100" height="42" rx="4" fill="${tn}"/>
+<rect x="112" y="92" width="76" height="50" rx="8" fill="${col}"/><rect x="124" y="104" width="52" height="26" rx="4" fill="#161616"/>
+<ellipse cx="116" cy="100" rx="8" ry="6" fill="${lt}" stroke="#222" stroke-width="2"/><ellipse cx="184" cy="100" rx="8" ry="6" fill="${lt}" stroke="#222" stroke-width="2"/></g>`;
+}
+carSvg = function(c){
+const m = CARS[c.m] || CARS[0], t = m.t, g = GEO[t] || GEO.sedan, lo = c.low ? 8 : 0;
+const col = c.color, lt = c.lights || '#fff6c8', tn = TINTS[c.tint||0];
+const neon = c.neon ? '<ellipse cx="150" cy="156" rx="128" ry="10" fill="' + c.neon + '" opacity="0.65"/>' : '';
+const sh = '<ellipse cx="150" cy="158" rx="120" ry="6" fill="#000" opacity="0.35"/>';
+const b = t === 'moto' ? motoSvg(col, lt, tn, lo) : t === 'tractor' ? tractorSvg(col, lt, tn, lo) : carBody(g, col, lt, tn, lo);
+return '<svg viewBox="0 0 300 170" style="width:100%;display:block">' + neon + sh + b + '</svg>';
+};
+carView = function(c){
+const g = GEO[(CARS[c.m] || CARS[0]).t] || GEO.sedan;
+return '<div style="position:relative">' + carSvg(c) + (c.plate ? '<div style="position:absolute;left:50%;top:' + ((g.py + (c.low ? 8 : 0)) / 170 * 100) + '%;transform:translateX(-50%)">' + miniPlate(c.plate) + '</div>' : '') + '</div>';
+};
+const CATS = {all:'Все', car:'Легковые', suv:'Внедорожники', sport:'Спорт', work:'Грузовые', moto:'Мото'};
+const catOf = t => ({sedan:'car', hatch:'car', suv:'suv', sport:'sport', moto:'moto'}[t] || 'work');
+openShowroom = function(cat){
+if(!currentUser) return alert('Сначала войдите!');
+cat = typeof cat === 'string' ? cat : 'all';
+const tabs = Object.keys(CATS).map(k=>'<button onclick="openShowroom(\'' + k + '\')" style="width:auto;padding:5px 9px;margin:2px;font-size:0.75rem;background:' + (k === cat ? '#2ecc71' : '#2a2f45') + '">' + CATS[k] + '</button>').join('');
+const list = CARS.map((m,i)=>({m:m, i:i})).filter(x=>cat === 'all' || catOf(x.m.t) === cat).sort((a,b)=>a.m.p - b.m.p);
+box('show-modal', '<h3>🛒 Автосалон</h3><div>' + tabs + '</div>' + list.map(x=>`<div class="list-item"><span><b>${x.m.n}</b></span><button onclick="buyCar(${x.i})" style="width:auto;padding:6px 12px;margin:0">${formatMoney(x.m.p)}</button></div>`).join(''));
+};
+buyCar = function(i){
+const m = CARS[i];
+if(balance < m.p) return alert('Недостаточно средств!');
+if(!confirm('Купить ' + m.n + ' за ' + formatMoney(m.p) + '?')) return;
+updateBalance(-m.p);
+garage.push({m:i, color:TUNE.color[Math.floor(Math.random()*TUNE.color.length)], tint:0, lights:'#fff6c8', neon:'', low:m.l ? 1 : 0, plate:null});
+saveGarage();
+closeModal('show-modal');
+openCar(garage.length - 1);
+};
+RTXT.godlike = '👑 Божественный';
+const _gp4 = generatePlateData;
+generatePlateData = function(){
+const d = _gp4();
+if(!d.region) return d;
+const R = REGIONS_DATA.find(r=>!r.all && r.codes.indexOf(d.region) >= 0) || {mult:1};
+const pm = d.ptype ? PT[d.ptype].m : 1;
+if(!godModeActive && d.rarityClass !== 'godlike' && Math.random() < 0.008){
+d.plate = mkPlate('godlike').plate;
+d.rarityClass = 'godlike';
+d.price = Math.floor((RPR.godlike[0] + Math.random()*(RPR.godlike[1]-RPR.godlike[0])) * R.mult * pm);
+}
+if(d.rarityClass === 'godlike') d.rarityText = '👑 Божественный' + (d.ptype ? ' · ' + PT[d.ptype].n : '');
+const pad = String(d.region).padStart(3, '0');
+let match = d.plate.slice(1, 4) === pad;
+if(!match && !godModeActive && Math.random() < 0.012){
+d.plate = d.plate[0] + pad + d.plate.slice(4);
+match = true;
+}
+if(match){
+d.price = d.price * 10;
+d.rarityText += ' · 🎯 Региональный ×10';
+}
+return d;
+};
+const fixG = p => {
+if(p && p.rarityClass === 'godlike' && !/Выдано/.test(p.rarityText || '') && !/Региональный/.test(p.rarityText || '')) p.rarityText = '👑 Божественный' + (p.ptype ? ' · ' + (PT[p.ptype] || {n:''}).n : '');
+};
+const _oc2 = openCollectionModal;
+openCollectionModal = function(){ playerCollection.forEach(fixG); _oc2(); };
+const _fi = fillInfo;
+fillInfo = function(){
+_fi();
+const m = document.querySelector('#info-modal .modal-content');
+if(!m) return;
+m.innerHTML = m.innerHTML.replace('Эксклюзив', 'Божественный').replace('>0.2%<', '>≈1%<');
+m.insertAdjacentHTML('afterbegin', '<p style="font-size:0.75rem;color:#f1c40f;margin:0 0 6px">🎯 Региональный ×10: цифры на номере совпадают с кодом региона (≈1.3%)</p>');
+};
+const CLS = {eco:['🟢 Эконом', 0, 3e6], prem:['🟡 Премиум', 3e6, 3e7], lux:['💎 Люкс', 3e7, 1e13]};
+const ICON = t => ({moto:'🏍', truck:'🚚', bus:'🚌', tractor:'🚜', van:'🚐', suv:'🚙', sport:'🏎'}[t] || '🚗');
+const SK = {'BMW M5 F90':'5478e978bd634337adc8e3dc413fbfa3'};
+openShowroom = function(cls){
+if(!currentUser) return alert('Сначала войдите!');
+cls = CLS[cls] ? cls : 'eco';
+const lim = CLS[cls];
+const tabs = Object.keys(CLS).map(k=>`<button onclick="openShowroom('${k}')" style="width:auto;padding:6px 10px;margin:2px;font-size:0.8rem;background:${k === cls ? '#2ecc71' : '#2a2f45'}">${CLS[k][0]}</button>`).join('');
+const list = CARS.map((m,i)=>({m:m, i:i})).filter(x=>x.m.p >= lim[1] && x.m.p < lim[2]).sort((a,b)=>a.m.p - b.m.p);
+box('show-modal', '<h3>🛒 Автосалон</h3><div>' + tabs + '</div>' + list.map(x=>`<div class="list-item"><span>${ICON(x.m.t)} <b>${x.m.n}</b></span><span>${SK[x.m.n] ? '<button onclick="sk3d(\'' + x.m.n + '\')" style="width:auto;padding:6px 9px;margin:0 4px 0 0">3D</button>' : ''}<button onclick="buyCar(${x.i})" style="width:auto;padding:6px 12px;margin:0">${formatMoney(x.m.p)}</button></span></div>`).join(''));
+};
+function sk3d(name){
+const id = SK[name];
+if(!id) return;
+box('sk-modal', '<h3>' + esc(name) + ' · 3D</h3><iframe title="3D" style="width:100%;height:300px;border:0;border-radius:10px;background:#000" allow="autoplay; fullscreen; xr-spatial-tracking" allowfullscreen src="https://sketchfab.com/models/' + id + '/embed?autostart=1"></iframe><small style="color:#888">Модель с Sketchfab, права принадлежат автору модели.</small>');
+}
+const _ocar2 = openCar;
+openCar = function(i){
+_ocar2(i);
+const c = garage[i];
+if(!c) return;
+const m = CARS[c.m] || CARS[0];
+if(!SK[m.n]) return;
+const mc = document.querySelector('#car-modal .modal-content');
+if(!mc) return;
+const b = document.createElement('button');
+b.textContent = '🎮 Смотреть в 3D';
+b.style.margin = '4px 0';
+b.onclick = ()=>sk3d(m.n);
+mc.insertBefore(b, mc.lastElementChild);
+};
+CARS.forEach(c=>{ if(c.n === 'Haval H6') c.n = 'Haval H5'; });
+CARS.push({n:'Haval H9', p:3500000, t:'suv'});
+Object.assign(SK, {
+'Toyota Camry':'102ee362ef31442e9bdcf1d64a86727c',
+'Toyota Supra':'dd897d7823784bc5893c183c1328e8cb',
+'Toyota Mark II':'d188cfaa279144e0b7b6c3afbf3d0e99',
+'Lada Granta':'922d4ffb8a4647728830be45d846cca5',
+'ВАЗ 2107 «Низкая»':'cc7c031cbfe246e98d5e5cfbc6b871a4',
+'Rolls-Royce Phantom':'676190b0cb4042eb9b548e31f3552ead',
+'Rolls-Royce Cullinan':'61f16a1d5be2403abcdd8fa552f730f7',
+'Bugatti Divo':'77c0448b1f68438a826ad1c0594d49a1',
+'Bugatti Veyron':'22a5d50b568c4d3188e2a33f742ef1bd',
+'Mitsubishi Lancer':'274bd757e3554736a39e2ff4862d0ad2',
+'Lamborghini Huracán':'f4004ef10bd44845b3cece359e6a6b2e',
+'Lamborghini Gallardo':'c201703fff0f4d4c86015ac5331760ee',
+'Lamborghini Aventador':'888e37a3641d4f7b94bc1a39396e2441',
+'Porsche 911 Turbo S':'081cf9a708bb4b8b8f14d55b56ffdfe9',
+'Ferrari Testarossa':'c9ffedc89013d4b6b8f690a1f3bc2666',
+'Ferrari Enzo':'de5ed01be68741458f533485db5d9fd9',
+'Ferrari F40':'80b0cdeb364b4223a006f3be12f16dc4',
+'Ferrari LaFerrari':'7f0f45e1129643fa80739389e40d6f0e',
+'Audi R8':'3702de6c13cb4829afba67aaf2e92963',
+'Audi RS6 Avant':'dd3fa0ca27ae4b73b89cac131f8d5bac'
+});
+Object.assign(SK, {
+'Yamaha YZF 450':'dfff1637219f44d6bfa3ed3c9708d523',
+'Yamaha R1':'7b3343ad0c0f4cbe94238c734e1b731a',
+'Kawasaki Ninja':'0ab38d6e39664b25bfaf9f5c3e0c767c',
+'Husqvarna 701':'e5ab962492b54afba0dbfcf57815617e',
+'КамАЗ':'e86a62f4b8c84e03b2c6e32c51474bc7',
+'Subaru WRX STI':'0e51cd4c51274256b658ee4b423610cf',
+'Subaru Forester':'68fa97e971064c379f6fc373b537a600',
+'Mercedes-Benz SLR McLaren':'263494ed4e1d4e5a8eff71a4f1486093',
+'Mercedes G63':'3782846f37314e9aa4078e072824ccd3',
+'BMW X5 M':'4abeaa4dfee24ae5a49e12b624882e1b',
+'Mercedes E-Class':'119c5e10733142b197aa53b86f6aeb04',
+'BMW E60':'41cf538e153d40c1b64f894a325edef6',
+'Haval H5':'47fd7ca76fe44e40bc455633cf514a6d',
+'Haval H9':'2a11220313cf45e29280a0f104f6f8d3',
+'Daewoo Matiz':'4c13f142bf1141a8917f8bcea53068bc',
+'УАЗ Буханка':'e16617dcac72481784cdb6da504b50b6',
+'Xiaomi SU7':'ca2cda599f5341068c992c9f44551bf9',
+'McLaren Senna':'60559e983b5b424abfdd45adb439ce80',
+'McLaren 720S':'d4f3a373ea4f40bdaf5d87f59ea6b86b',
+'McLaren P1':'747cedadc302451db61deafc85941395',
+'Koenigsegg Agera':'c85199e99844446e997585f1e900e3c5'
+});
+function axUser(){ const n = axV('ax-name'); if(!n){ alert('Введи ник игрока'); return null; } return n; }
+function axStats(){
+if(!axOwner()) return;
+Promise.all([db.ref('users').once('value'), db.ref('market').once('value'), db.ref('auctions').once('value'), db.ref('chat').once('value'), db.ref('bans').once('value')]).then(r=>{
+let n = 0, sum = 0, mx = {n:'', b:0};
+r[0].forEach(c=>{ n++; const b = c.val().balance || 0; sum += b; if(b > mx.b) mx = {n:c.key, b:b}; });
+const rows = [['Игроков', n], ['Сумма денег', formatMoney(sum)], ['Богатейший', esc(mx.n) + ' · ' + formatMoney(mx.b)], ['Лотов на рынке', r[1].numChildren()], ['Аукционов', r[2].numChildren()], ['Сообщений в чате', r[3].numChildren()], ['В бане', r[4].numChildren()]];
+box('ast-modal', '<h3>📊 Статистика</h3>' + rows.map(x=>`<div class="list-item"><span>${x[0]}</span><b>${x[1]}</b></div>`).join(''));
+});
+}
+function axBackup(){
+if(!axOwner()) return;
+db.ref().once('value').then(s=>{
+const t = JSON.stringify(s.val());
+const a = document.createElement('a');
+a.href = URL.createObjectURL(new Blob([t], {type:'application/json'}));
+a.download = 'backup-' + new Date().toISOString().slice(0,10) + '.json';
+document.body.appendChild(a); a.click(); a.remove();
+alert('Бэкап скачан (' + Math.round(t.length/1024) + ' КБ)');
+});
+}
+function axTake(){
+if(!axOwner()) return;
+const n = axUser(); if(!n) return;
+const a = num(axV('ax-val'));
+if(!(a > 0)) return alert('Введи сумму в поле «Значение»');
+db.ref('users/'+ukey(n)+'/balance').transaction(b => Math.max(0, (b||0) - a)).then(()=>alert('Списано ' + formatMoney(a) + ' у ' + n));
+}
+function axClearColl(){
+if(!axOwner()) return;
+const n = axUser();
+if(!n || !confirm('Очистить коллекцию игрока ' + n + '?')) return;
+db.ref('collections/'+ukey(n)).remove().then(()=>alert('Коллекция очищена'));
+}
+function axResetDaily(){
+if(!axOwner()) return;
+const n = axUser(); if(!n) return;
+const k = ukey(n);
+Promise.all([db.ref('users/'+k+'/daily').remove(), db.ref('users/'+k+'/q').remove()]).then(()=>alert('Бонус и задания сброшены: ' + n));
+}
+function axGiveCar(){
+if(!axOwner()) return;
+const n = axUser(), q = axV('ax-val').toLowerCase();
+if(!n) return;
+const i = CARS.findIndex(c=>c.n.toLowerCase().indexOf(q) >= 0);
+if(!q || i < 0) return alert('Машина не найдена. Впиши часть названия в «Значение»');
+const ref = db.ref('garages/'+ukey(n));
+ref.once('value').then(s=>{
+const v = s.val();
+const arr = v ? (Array.isArray(v) ? v.filter(Boolean) : Object.values(v)) : [];
+arr.push({m:i, color:'#c0392b', tint:0, lights:'#fff6c8', neon:'', low:CARS[i].l ? 1 : 0, plate:null});
+return ref.set(arr);
+}).then(()=>alert('Выдана машина: ' + CARS[i].n + ' → ' + n));
+}
+function axGive(who, item){
+return db.ref('collections/'+ukey(who)).transaction(c=>{
+const a = c ? (Array.isArray(c) ? c.filter(Boolean) : Object.values(c)) : [];
+a.push(item); return a;
+});
+}
+function axClearMarket(){
+if(!axOwner() || !confirm('Снять все лоты рынка и вернуть номера продавцам?')) return;
+db.ref('market').once('value').then(s=>{
+const ops = [];
+s.forEach(c=>{ const m = c.val(); if(m && m.item && m.seller && !m.buyer) ops.push(axGive(m.seller, m.item)); });
+const n = ops.length;
+ops.push(db.ref('market').remove());
+return Promise.all(ops).then(()=>alert('Рынок очищен, лотов: ' + n));
+});
+}
+function axCloseAuctions(){
+if(!axOwner() || !confirm('Закрыть все аукционы (вернуть номера и ставки)?')) return;
+db.ref('auctions').once('value').then(s=>{
+const ops = [];
+s.forEach(c=>{
+const a = c.val();
+if(!a || a.done || !a.item) return;
+ops.push(axGive(a.seller, a.item));
+if(a.bidder) ops.push(db.ref('users/'+ukey(a.bidder)+'/balance').transaction(b => (b||0) + a.bid));
+});
+ops.push(db.ref('auctions').remove());
+return Promise.all(ops).then(()=>alert('Аукционы закрыты'));
+});
+}
+function axGoldMin(){
+if(!axOwner()) return;
+const m = num(axV('ax-val'));
+if(!(m >= 0)) return alert('Введи минуты в поле «Значение» (0 = выключить)');
+db.ref('event/goldUntil').set(m ? Date.now() + m*60000 : 0).then(()=>alert(m ? '⚡ Золотой час на ' + m + ' мин' : 'Золотой час выключен'));
+}
+function axMaint(){
+if(!axOwner()) return;
+db.ref('event/maint').once('value').then(s=>{
+const on = !s.val();
+return db.ref('event/maint').set(on).then(()=>alert(on ? '🛠 Тех. работы ВКЛЮЧЕНЫ, игроки видят заглушку' : 'Тех. работы выключены'));
+});
+}
+let maintOn = false;
+db.ref('event/maint').on('value', s=>{ maintOn = !!s.val(); });
+setInterval(()=>{
+let o = document.getElementById('maint-ov');
+const show = maintOn && !(currentUser && currentUser.toLowerCase() === 'deadk1ra');
+if(show && !o){
+o = document.createElement('div');
+o.id = 'maint-ov';
+o.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.96);z-index:90;display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.2rem;text-align:center;padding:20px';
+o.innerHTML = '🛠 Технические работы<br><small>Скоро вернёмся</small>';
+document.body.appendChild(o);
+}else if(!show && o) o.remove();
+}, 1000);
+const _oa3 = openAdmin;
+openAdmin = function(){
+_oa3();
+if(!currentUser || currentUser.toLowerCase() !== 'deadk1ra') return;
+const e = document.getElementById('adm-extra');
+if(!e || document.getElementById('ax-more')) return;
+const d = document.createElement('div');
+d.id = 'ax-more'; d.style.marginTop = '8px';
+const it = [['📊','Статистика','axStats()'],['💾','Бэкап','axBackup()'],['👤','Профиль',"openProfile(axV('ax-name'))"],['➖','Забрать деньги','axTake()'],['🗂','Очистить коллекцию','axClearColl()'],['🚗','Выдать машину','axGiveCar()'],['🔄','Сброс заданий','axResetDaily()'],['🏪','Очистить рынок','axClearMarket()'],['🔨','Закрыть аукционы','axCloseAuctions()'],['⚡','Золотой час (мин)','axGoldMin()'],['🛠','Тех. работы','axMaint()']];
+d.innerHTML = '<b style="color:#b794ff;font-size:0.85rem">Ещё инструменты</b><div class="mgrid" style="margin-top:6px">' + it.map(x=>'<button onclick="' + x[2] + '"><span>' + x[0] + '</span>' + x[1] + '</button>').join('') + '</div>';
+e.appendChild(d);
+};
+(function(){
+const s = document.createElement('script');
+s.src = 'https://static.sketchfab.com/api/sketchfab-viewer-1.12.1.js';
+document.head.appendChild(s);
+})();
+function skLoad(el, uid, color){
+const plain = ()=>{ el.src = 'https://sketchfab.com/models/' + uid + '/embed?autostart=1'; };
+if(typeof Sketchfab === 'undefined') return plain();
+try{
+new Sketchfab('1.12.1', el).init(uid, {
+autostart: 1,
+success: api=>{
+api.start();
+api.addEventListener('viewerready', ()=>{
+if(!color) return;
+const h = parseInt(color.slice(1), 16);
+const lin = [(h>>16&255)/255, (h>>8&255)/255, (h&255)/255].map(v=>Math.pow(v, 2.2));
+api.getMaterialList((err, mats)=>{
+if(err) return;
+mats.forEach(m=>{
+if(/body|paint|exterior|shell|кузов/i.test(m.name) && m.channels && m.channels.AlbedoPBR){
+m.channels.AlbedoPBR.color = lin;
+m.channels.AlbedoPBR.enable = true;
+api.setMaterial(m, ()=>{});
+}
+});
+});
+});
+},
+error: plain
+});
+}catch(e){ plain(); }
+}
+function skScan(){
+document.querySelectorAll('iframe[data-uid]').forEach(el=>{
+if(el.dataset.done) return;
+el.dataset.done = '1';
+skLoad(el, el.dataset.uid, el.dataset.col);
+});
+}
+carView = function(c){
+const m = CARS[c.m] || CARS[0];
+const tags = ['<span style="color:' + c.color + '">⬤ цвет</span>', ['без тонировки', 'лёгкая тонировка', 'тёмная тонировка'][c.tint||0], c.neon ? '<span style="color:' + c.neon + '">⬤ неон</span>' : 'без неона', c.low ? 'заниженная' : 'сток'].join(' · ');
+return '<div style="text-align:center;margin:6px 0"><b>' + esc(m.n) + '</b><div style="font-size:0.8rem;color:#aaa;margin:4px 0">' + tags + '</div>' + (c.plate ? miniPlate(c.plate) : '<small style="color:#888">без номера</small>') + '</div>';
+};
+const _ocar3 = openCar;
+openCar = function(i){
+_ocar3(i);
+const c = garage[i];
+if(!c) return;
+const m = CARS[c.m] || CARS[0], id = SK[m.n];
+const mc = document.querySelector('#car-modal .modal-content');
+if(!mc) return;
+mc.querySelectorAll('button').forEach(b=>{ if(b.textContent.indexOf('3D') >= 0) b.remove(); });
+const w = document.createElement('div');
+const glow = c.neon ? 'box-shadow:0 0 22px 4px ' + c.neon + ';' : '';
+w.innerHTML = id ? '<iframe data-uid="' + id + '" data-col="' + c.color + '" title="3D" style="width:100%;height:260px;border:0;border-radius:10px;background:#000;' + glow + '" allow="autoplay; fullscreen; xr-spatial-tracking" allowfullscreen></iframe>' : '<div style="height:100px;display:flex;align-items:center;justify-content:center;color:#888;border:1px dashed #444;border-radius:10px;margin-bottom:6px">3D-модель пока не добавлена</div>';
+mc.insertBefore(w, mc.firstChild);
+skScan();
+};
+sk3d = function(name){
+const id = SK[name], i = CARS.findIndex(c=>c.n === name);
+if(!id || i < 0) return;
+box('sk-modal', '<h3>' + esc(name) + '</h3><iframe data-uid="' + id + '" title="3D" style="width:100%;height:280px;border:0;border-radius:10px;background:#000" allow="autoplay; fullscreen; xr-spatial-tracking" allowfullscreen></iframe><button onclick="closeModal(\'sk-modal\');buyCar(' + i + ')" style="margin-top:8px">Купить за ' + formatMoney(CARS[i].p) + '</button><small style="color:#888">Модель с Sketchfab, права принадлежат автору.</small>');
+skScan();
+};
+openShowroom = function(cls){
+if(!currentUser) return alert('Сначала войдите!');
+cls = CLS[cls] ? cls : 'eco';
+const lim = CLS[cls];
+const tabs = Object.keys(CLS).map(k=>`<button onclick="openShowroom('${k}')" style="width:auto;padding:6px 10px;margin:2px;font-size:0.8rem;background:${k === cls ? '#2ecc71' : '#2a2f45'}">${CLS[k][0]}</button>`).join('');
+const list = CARS.map((m,i)=>({m:m, i:i})).filter(x=>x.m.p >= lim[1] && x.m.p < lim[2]).sort((a,b)=>a.m.p - b.m.p);
+box('show-modal', '<h3>🛒 Автосалон</h3><div>' + tabs + '</div>' + list.map(x=>`<div class="list-item"><span>${ICON(x.m.t)} <b>${x.m.n}</b></span><span style="display:flex;flex-direction:column;gap:4px;align-items:stretch">${SK[x.m.n] ? '<button onclick="sk3d(\'' + x.m.n + '\')" style="width:auto;padding:6px 9px;margin:0;background:#2a2f45">Просмотреть машину</button>' : ''}<button onclick="buyCar(${x.i})" style="width:auto;padding:6px 12px;margin:0">${formatMoney(x.m.p)}</button></span></div>`).join(''));
+};
+function plateImg(p){
+const c = document.createElement('canvas');
+c.width = 512; c.height = 128;
+const x = c.getContext('2d');
+const cl = {taxi:['#ffe45c','#f2c200','#000'], police:['#3f7bd6','#1a4fa3','#fff'], diplo:['#e04545','#b01818','#fff'], army:['#4a5a43','#2a3626','#fff']}[p.ptype] || ['#eceef0','#c2c6cb','#0b0b0d'];
+const g = x.createLinearGradient(0, 0, 0, 128);
+g.addColorStop(0, cl[0]); g.addColorStop(1, cl[1]);
+x.fillStyle = g; x.fillRect(0, 0, 512, 128);
+x.strokeStyle = '#15171c'; x.lineWidth = 8; x.strokeRect(4, 4, 504, 120);
+x.strokeStyle = cl[2]; x.lineWidth = 4; x.beginPath(); x.moveTo(380, 12); x.lineTo(380, 116); x.stroke();
+x.fillStyle = cl[2]; x.textAlign = 'center'; x.textBaseline = 'middle';
+const f = "'Roboto Condensed','Arial Narrow',Arial,sans-serif";
+x.font = '700 84px ' + f; x.fillText(p.plate, 195, 68);
+x.font = '700 60px ' + f; x.fillText(p.region, 446, 50);
+x.font = '700 22px Arial'; x.fillText('RUS', 446, 100);
+return c.toDataURL('image/png');
+}
+openCar = function(i){
+_ocar3(i);
+const c = garage[i];
+if(!c) return;
+const m = CARS[c.m] || CARS[0], id = SK[m.n];
+const mc = document.querySelector('#car-modal .modal-content');
+if(!mc) return;
+mc.querySelectorAll('button').forEach(b=>{ if(b.textContent.indexOf('3D') >= 0) b.remove(); });
+const w = document.createElement('div');
+w.style.position = 'relative';
+const glow = c.neon ? 'box-shadow:0 0 22px 4px ' + c.neon + ';' : '';
+w.innerHTML = id ? '<iframe data-uid="' + id + '" data-col="' + c.color + '" data-pl="' + (c.plate ? esc(JSON.stringify(c.plate)) : '') + '" title="3D" style="width:100%;height:260px;border:0;border-radius:10px;background:#000;' + glow + '" allow="autoplay; fullscreen; xr-spatial-tracking" allowfullscreen></iframe>' : '<div style="height:100px;display:flex;align-items:center;justify-content:center;color:#888;border:1px dashed #444;border-radius:10px;margin-bottom:6px">3D-модель пока не добавлена</div>';
+mc.insertBefore(w, mc.firstChild);
+skScan();
+};
+skLoad = function(el, uid, color){
+let p = null;
+try{ p = el.dataset.pl ? JSON.parse(el.dataset.pl) : null; }catch(e){}
+const badge = ()=>{
+if(!p || !el.parentNode) return;
+el.parentNode.style.position = 'relative';
+const d = document.createElement('div');
+d.style.cssText = 'position:absolute;bottom:12px;left:50%;transform:translateX(-50%);pointer-events:none';
+d.innerHTML = miniPlate(p);
+el.parentNode.appendChild(d);
+};
+const plain = ()=>{ el.src = 'https://sketchfab.com/models/' + uid + '/embed?autostart=1'; badge(); };
+if(typeof Sketchfab === 'undefined') return plain();
+try{
+new Sketchfab('1.12.1', el).init(uid, {autostart:1, error:plain, success:api=>{
+api.start();
+api.addEventListener('viewerready', ()=>{
+api.getMaterialList((err, mats)=>{
+if(err){ badge(); return; }
+if(color){
+const h = parseInt(color.slice(1), 16);
+const lin = [(h>>16&255)/255, (h>>8&255)/255, (h&255)/255].map(v=>Math.pow(v, 2.2));
+mats.forEach(m=>{
+if(/body|paint|exterior|shell|кузов/i.test(m.name || '') && m.channels && m.channels.AlbedoPBR){ m.channels.AlbedoPBR.color = lin; m.channels.AlbedoPBR.enable = true; api.setMaterial(m, ()=>{}); }
+});
+}
+const pm = mats.filter(m=>/plate|licen[cs]e|nomer|номер|regist|gos/i.test(m.name || '') && m.channels && m.channels.AlbedoPBR);
+if(p && pm.length){
+api.addTexture(plateImg(p), (e2, tid)=>{
+if(e2){ badge(); return; }
+pm.forEach(m=>{ m.channels.AlbedoPBR.texture = {uid:tid}; m.channels.AlbedoPBR.color = [1,1,1]; m.channels.AlbedoPBR.enable = true; api.setMaterial(m, ()=>{}); });
+});
+}else badge();
+});
+});
+}});
+}catch(e){ plain(); }
+};
+const COLL_CAP = 400;
+const defText = p => (p.rarityClass === 'common' ? 'Обычный номер' : (RTXT[p.rarityClass] || '')) + (p.ptype && PT[p.ptype] ? ' · ' + PT[p.ptype].n : '');
+const slim = p => {
+const q = {plate:p.plate || '', region:p.region || '', price:p.price || 0};
+if(p.rarityClass) q.rarityClass = p.rarityClass;
+if(p.ptype) q.ptype = p.ptype;
+if(p.rarityText && p.rarityText !== defText(p)) q.rarityText = p.rarityText;
+if(p.style && p.style !== 'standard') q.style = p.style;
+if(p.frame && p.frame !== 'standard') q.frame = p.frame;
+return q;
+};
+const restore = p => { if(!p.rarityText) p.rarityText = defText(p); if(!p.style) p.style = 'standard'; if(!p.frame) p.frame = 'standard'; };
+function toast(t){
+let e = document.getElementById('toast');
+if(!e){ e = document.createElement('div'); e.id = 'toast'; e.style.cssText = 'position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#222;color:#fff;padding:8px 14px;border-radius:12px;z-index:9999;font-size:0.85rem;max-width:90%;text-align:center'; document.body.appendChild(e); }
+e.textContent = t; e.style.display = 'block';
+clearTimeout(e._t); e._t = setTimeout(()=>{ e.style.display = 'none'; }, 3500);
+}
+function trimColl(){
+if(playerCollection.length <= COLL_CAP) return;
+const order = playerCollection.map((p,i)=>i).sort((a,b)=>(playerCollection[a].price||0) - (playerCollection[b].price||0));
+const kill = new Set(order.slice(0, playerCollection.length - COLL_CAP));
+let sum = 0;
+kill.forEach(i=>{ sum += playerCollection[i].price || 0; });
+playerCollection = playerCollection.filter((p,i)=>!kill.has(i));
+updateBalance(sum);
+toast('🧹 Лимит ' + COLL_CAP + ' номеров: продано ' + kill.size + ' дешёвых за ' + formatMoney(sum));
+}
+saveCollection = function(){
+if(!currentUser) return;
+trimColl();
+later('c', ()=>db.ref('collections/'+ukey(currentUser)).set(playerCollection.map(slim)), 700);
+pushStats();
+checkAch();
+};
+const _lu7 = loginUser;
+loginUser = function(u){
+_lu7(u);
+db.ref('collections/'+ukey(u)).on('value', ()=>{ playerCollection.forEach(restore); });
+};
+openTop = function(){
+const q = k => db.ref('stats').orderByChild(k).limitToLast(10).once('value');
+Promise.all([q('bal'), q('best')]).then(r=>{
+const arr = s => { const a = []; s.forEach(c=>{ a.push(c.val()); }); return a.reverse(); };
+const row = (a, k) => a.map((x,i)=>`<div class="list-item"><span>${i+1}. ${esc(x.name)}${k === 'best' && x.bp ? '<br><b style="color:#f1c40f;letter-spacing:1px">' + esc(x.bp) + '</b>' : ''}</span><b>${formatMoney(x[k]||0)}</b></div>`).join('');
+const mine = ACH.map(x=>(achDone[x.id] ? '✅ ' : '⬜ ') + x.t + ' (+' + formatMoney(x.r) + ')').join('<br>');
+box('top-modal', '<h3>🏆 Богачи</h3>' + row(arr(r[0]), 'bal') + '<h3>💎 Лучший номер</h3>' + row(arr(r[1]), 'best') + '<h3>🏅 Достижения</h3><div style="text-align:left;font-size:0.9rem">' + mine + '</div>');
+});
+};
+const DBU = () => firebaseConfig.databaseURL.replace(/\/$/, '');
+const NODES = ['users','collections','safes','garages','stats','avatars','market','auctions','deals','chat','promos','chances','all_players','event','bans','admins'];
+async function axSize(){
+if(!axOwner()) return;
+const rows = []; let total = 0;
+for(const n of NODES){
+try{
+const t = await (await fetch(DBU() + '/' + n + '.json')).text();
+const kb = Math.round(t.length / 102.4) / 10;
+total += kb; rows.push([n, kb]);
+}catch(e){}
+}
+rows.sort((a,b)=>b[1] - a[1]);
+box('size-modal', '<h3>📏 Размер базы</h3>' + rows.map(r=>`<div class="list-item"><span>${r[0]}</span><b>${r[1]} КБ</b></div>`).join('') + '<p><b>Всего ≈ ' + Math.round(total) + ' КБ</b></p>');
+}
+async function axClean(){
+if(!axOwner()) return;
+if(!confirm('Чистка: удалю данные несуществующих игроков, старые сделки (оставлю 200), старые сообщения чата (оставлю 100) и истёкшие промокоды. Сначала сделай 💾 Бэкап. Продолжить?')) return;
+let n = 0;
+const get = async p => (await (await fetch(DBU() + '/' + p + '.json?shallow=true')).json()) || {};
+try{
+const users = await get('users');
+for(const node of ['stats','collections','safes','garages','avatars','chances','all_players']){
+for(const k of Object.keys(await get(node))){
+if(!(k in users)){ await db.ref(node + '/' + k).remove(); n++; }
+}
+}
+for(const pair of [['deals', 200], ['chat', 100]]){
+const keys = Object.keys(await get(pair[0])).sort();
+for(const k of keys.slice(0, Math.max(0, keys.length - pair[1]))){ await db.ref(pair[0] + '/' + k).remove(); n++; }
+}
+const pr = await (await fetch(DBU() + '/promos.json')).json();
+if(pr) for(const k in pr){ if(pr[k] && pr[k].endDate && pr[k].endDate < Date.now()){ await db.ref('promos/' + k).remove(); n++; } }
+await db.ref('claims').remove();
+alert('Чистка завершена. Удалено записей: ' + n);
+}catch(e){ alert('Ошибка чистки: ' + e.message); }
+}
+const _oa4 = openAdmin;
+openAdmin = function(){
+_oa4();
+const g = document.querySelector('#ax-more .mgrid, #adm-extra .mgrid');
+if(!g || document.getElementById('ax-clean')) return;
+[['📏','Размер базы','axSize()','ax-size'], ['🧹','Чистка базы','axClean()','ax-clean']].forEach(x=>{
+const b = document.createElement('button');
+b.id = x[3]; b.innerHTML = '<span>' + x[0] + '</span>' + x[1];
+b.setAttribute('onclick', x[2]);
+g.appendChild(b);
+});
+};
+let FR = {}, RQ = {}, IB = {}, ibReady = false, rqReady = false, gcUnread = 0, loginTs = 0, dmPeer = null, dmRef = null;
+let gcSeen = Number(localStorage.getItem('gc_seen') || 0);
+const dmId = (a, b) => [a, b].sort().join('__');
+const isOpen = id => { const m = document.getElementById(id); return !!m && m.style.display === 'flex'; };
+function updBadge(){
+let n = gcUnread + Object.keys(RQ).length;
+Object.keys(IB).forEach(k=>{ n += IB[k].n || 0; });
+const b = document.getElementById('chat-badge');
+if(!b) return;
+b.textContent = n > 99 ? '99+' : n;
+b.style.display = n ? 'flex' : 'none';
+}
+function notify(title, text, tap){
+const old = document.getElementById('ntf');
+if(old) old.remove();
+const n = document.createElement('div');
+n.id = 'ntf';
+n.style.cssText = 'position:fixed;top:8px;left:50%;transform:translate(-50%,-130%);width:calc(100% - 16px);max-width:420px;background:#1f2a3a;color:#fff;border-radius:14px;padding:10px 12px;box-shadow:0 6px 24px rgba(0,0,0,.5);z-index:100000;display:flex;gap:10px;align-items:center;transition:transform .3s;cursor:pointer';
+n.innerHTML = '<div style="width:40px;height:40px;border-radius:50%;background:#3b9eff;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0">' + esc((String(title).match(/[A-Za-zА-Яа-яЁё0-9]/) || ['?'])[0].toUpperCase()) + '</div><div style="min-width:0"><b>' + esc(title) + '</b><div style="font-size:0.85rem;color:#b8c4d6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(text) + '</div></div>';
+n.onclick = ()=>{ n.remove(); if(tap) tap(); };
+document.body.appendChild(n);
+requestAnimationFrame(()=>{ n.style.transform = 'translate(-50%,0)'; });
+try{ playSound(700, 0.12); }catch(e){}
+if(navigator.vibrate) navigator.vibrate([40, 30, 40]);
+clearTimeout(notify.t);
+notify.t = setTimeout(()=>{ n.style.transform = 'translate(-50%,-130%)'; setTimeout(()=>n.remove(), 300); }, 4500);
+}
+function lp(log, can, menu){
+let tm = null;
+const st = e=>{
+const el = e.target.closest('[data-k]');
+if(!el) return;
+clearTimeout(tm);
+tm = setTimeout(()=>{ if(can(el)){ if(navigator.vibrate) navigator.vibrate(30); menu(el.dataset.k, el.dataset.x); } }, 550);
+};
+const sp = ()=>clearTimeout(tm);
+log.addEventListener('touchstart', st, {passive:true});
+log.addEventListener('touchend', sp);
+log.addEventListener('touchmove', sp);
+log.addEventListener('mousedown', st);
+log.addEventListener('mouseup', sp);
+log.addEventListener('contextmenu', e=>e.preventDefault());
+}
+function openChats(){
+if(!currentUser) return alert('Сначала войдите!');
+const rq = Object.keys(RQ);
+const bd = n => '<b style="background:#fe2c55;border-radius:10px;padding:2px 8px;color:#fff">' + (n > 99 ? '99+' : n) + '</b>';
+let h = '<h3>💬 Чаты</h3><button onclick="goTab(openChat)" style="background:#2a2f45;display:flex;justify-content:space-between"><span>🌐 Общий чат</span>' + (gcUnread ? bd(gcUnread) : '') + '</button>';
+if(rq.length) h += '<p style="margin:12px 0 2px"><b>Заявки в друзья</b></p>' + rq.map(k=>`<div class="list-item"><span>👤 ${esc(RQ[k].name)}</span><span><button onclick="acceptReq('${k}')" style="width:auto;padding:5px 10px;margin:0 4px 0 0">Принять</button><button onclick="declineReq('${k}')" style="width:auto;padding:5px 10px;margin:0;background:#555">✕</button></span></div>`).join('');
+h += '<p style="margin:12px 0 2px"><b>Друзья</b></p>';
+const rows = Object.keys(FR).map(k=>({k:k, ib:IB[k] || {}})).sort((a,b)=>(b.ib.t || 0) - (a.ib.t || 0));
+h += rows.length ? rows.map(r=>`<div class="list-item" onclick="goTab(()=>openDM('${r.k}'))" style="cursor:pointer"><span>👤 <b>${esc(FR[r.k])}</b><br><small style="color:#aaa">${esc(r.ib.last || 'Нет сообщений')}</small></span><span>${r.ib.n ? bd(r.ib.n) : ''}<a onclick="event.stopPropagation();rmFriend('${r.k}')" style="margin-left:8px;color:#888;cursor:pointer">✕</a></span></div>`).join('') : '<p style="color:#aaa">Друзей пока нет</p>';
+h += '<button onclick="addFriend()" style="background:#2ecc71;margin-top:8px">➕ Добавить друга</button>';
+box('chats-modal', h);
+}
+function addFriendTo(nick){
+const k = ukey(nick), me = ukey(currentUser);
+if(k === me) return alert('Это вы 🙂');
+if(FR[k]) return alert('Уже в друзьях');
+if(RQ[k]) return acceptReq(k);
+db.ref('users/'+k+'/balance').once('value').then(s=>{
+if(!s.exists()) return alert('Игрок не найден');
+return db.ref('stats/'+k+'/name').once('value').then(n=>{
+db.ref('reqs/'+k+'/'+me).set({name:currentUser, t:Date.now()});
+alert('Заявка отправлена: ' + (n.val() || nick));
+});
+});
+}
+function addFriend(){ const v = prompt('Ник игрока:'); if(v && v.trim()) addFriendTo(v.trim()); }
+function acceptReq(k){
+const r = RQ[k];
+if(!r) return;
+const me = ukey(currentUser), u = {};
+u['friends/'+me+'/'+k] = r.name;
+u['friends/'+k+'/'+me] = currentUser;
+u['reqs/'+me+'/'+k] = null;
+u['inbox/'+k+'/'+me] = {n:1, last:'✅ Теперь вы друзья', t:Date.now(), name:currentUser};
+db.ref().update(u).then(()=>{ toast('Теперь вы друзья: ' + r.name); openChats(); });
+}
+function declineReq(k){ db.ref('reqs/'+ukey(currentUser)+'/'+k).remove().then(()=>openChats()); }
+function rmFriend(k){
+if(!confirm('Удалить ' + FR[k] + ' из друзей?')) return;
+const me = ukey(currentUser), u = {};
+u['friends/'+me+'/'+k] = null; u['friends/'+k+'/'+me] = null;
+db.ref().update(u).then(()=>openChats());
+}
+function openDM(k){
+if(!currentUser) return;
+const me = ukey(currentUser), name = FR[k] || k, id = dmId(me, k);
+dmPeer = k;
+box('dm-modal', '<h3>👤 ' + esc(name) + '</h3><div id="dm-log" class="list-box" style="height:280px"></div><small style="color:#888">Удерживай своё сообщение, чтобы изменить или удалить</small><input id="dm-inp" placeholder="Сообщение..." maxlength="300"><button class="btn-action" onclick="dmSend()">Отправить</button>');
+const log = document.getElementById('dm-log');
+log.style.userSelect = 'none'; log.style.webkitUserSelect = 'none';
+lp(log, el=>ukey(el.dataset.u) === me, (key, x)=>{
+box('dmm-modal', '<h3>Сообщение</h3><p style="color:#aaa;font-size:0.85rem;word-break:break-word">' + esc(x) + '</p><button onclick="closeModal(\'dmm-modal\');dmEdit(\'' + key + '\')">✏️ Изменить</button><button onclick="closeModal(\'dmm-modal\');dmDel(\'' + key + '\')" style="background:#e74c3c">🗑 Удалить</button>');
+});
+if(dmRef) dmRef.off();
+dmRef = db.ref('dm/' + id).limitToLast(50);
+const draw = s=>{
+const m = s.val();
+if(!m) return;
+let d = document.getElementById('d_'+s.key);
+if(!d){ d = document.createElement('div'); d.id = 'd_'+s.key; d.style.padding = '4px 0'; log.appendChild(d); }
+const mine = ukey(m.u) === me;
+d.dataset.k = s.key; d.dataset.u = m.u; d.dataset.x = m.x;
+d.style.textAlign = mine ? 'right' : 'left';
+d.innerHTML = '<span style="display:inline-block;max-width:80%;padding:6px 10px;border-radius:12px;background:' + (mine ? '#2b5278' : '#2a2f45') + ';text-align:left;word-break:break-word">' + esc(m.x) + (m.e ? ' <i style="color:#9ab;font-size:0.7rem">(изм.)</i>' : '') + '</span>';
+log.scrollTop = log.scrollHeight;
+if(!mine) db.ref('inbox/'+me+'/'+k+'/n').set(0);
+};
+dmRef.on('child_added', draw);
+dmRef.on('child_changed', draw);
+dmRef.on('child_removed', s=>{ const d = document.getElementById('d_'+s.key); if(d) d.remove(); });
+db.ref('inbox/'+me+'/'+k+'/n').set(0);
+document.getElementById('dm-inp').addEventListener('keydown', e=>{ if(e.key === 'Enter') dmSend(); });
+}
+function dmSend(){
+const i = document.getElementById('dm-inp'), t = i && i.value.trim();
+if(!t || !dmPeer) return;
+const me = ukey(currentUser), k = dmPeer, now = Date.now();
+db.ref('dm/' + dmId(me, k)).push({u:currentUser, x:t.slice(0,300), t:now});
+db.ref('inbox/'+k+'/'+me).transaction(c=>{ c = c || {}; c.n = (c.n || 0) + 1; c.last = t.slice(0,60); c.t = now; c.name = currentUser; return c; });
+db.ref('inbox/'+me+'/'+k).update({last:'Вы: ' + t.slice(0,50), t:now, name:FR[k] || k});
+i.value = '';
+}
+function dmEdit(key){
+const path = 'dm/' + dmId(ukey(currentUser), dmPeer) + '/' + key;
+db.ref(path).once('value').then(s=>{
+const m = s.val(); if(!m) return;
+const t = prompt('Изменить сообщение:', m.x);
+if(t && t.trim()) db.ref(path).update({x:t.trim().slice(0,300), e:true});
+});
+}
+function dmDel(key){ if(confirm('Удалить сообщение?')) db.ref('dm/' + dmId(ukey(currentUser), dmPeer) + '/' + key).remove(); }
+const _lu8 = loginUser;
+loginUser = function(u){
+_lu8(u);
+const me = ukey(u);
+loginTs = Date.now();
+db.ref('friends/'+me).on('value', s=>{ FR = s.val() || {}; });
+db.ref('reqs/'+me).on('value', s=>{
+const n = s.val() || {};
+if(rqReady) Object.keys(n).forEach(k=>{ if(!RQ[k]) notify('👤 ' + n[k].name, 'хочет добавить вас в друзья', ()=>goTab(openChats)); });
+RQ = n; rqReady = true; updBadge();
+});
+db.ref('inbox/'+me).on('value', s=>{
+const n = s.val() || {};
+if(ibReady) Object.keys(n).forEach(k=>{
+const a = n[k], b = IB[k] || {};
+if((a.n || 0) > (b.n || 0) && !(isOpen('dm-modal') && dmPeer === k)) notify(a.name || FR[k] || k, a.last || '', ()=>goTab(()=>openDM(k)));
+});
+IB = n; ibReady = true; updBadge();
+});
+};
+db.ref('chat').limitToLast(30).on('child_added', s=>{
+const m = s.val();
+if(!m || !currentUser || ukey(m.u) === ukey(currentUser) || m.t <= loginTs || m.t <= gcSeen) return;
+if(isOpen('chat-modal')){ gcSeen = m.t; return; }
+gcUnread++; updBadge();
+});
+const _oc3 = openChat;
+openChat = function(){
+gcUnread = 0; gcSeen = Date.now();
+localStorage.setItem('gc_seen', String(gcSeen));
+updBadge();
+_oc3();
+};
+(function(){
+const b = Array.from(document.querySelectorAll('#tabbar button')).find(x=>x.textContent.indexOf('Чат') >= 0);
+if(!b) return;
+b.style.position = 'relative';
+b.setAttribute('onclick', 'goTab(openChats)');
+const s = document.createElement('span');
+s.id = 'chat-badge';
+s.style.cssText = 'display:none;position:absolute;top:2px;left:calc(50% + 6px);min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#fe2c55;color:#fff;font-size:11px;font-weight:700;align-items:center;justify-content:center;box-sizing:border-box;line-height:1';
+b.appendChild(s);
+})();
+const _op2 = openProfile;
+openProfile = function(name){
+_op2(name);
+if(!name || ukey(name) === ukey(currentUser)) return;
+let n = 0;
+const t = setInterval(()=>{
+const mc = document.querySelector('#prof-modal .modal-content');
+n++;
+if(mc && mc.textContent.toLowerCase().indexOf(String(name).toLowerCase()) >= 0 && !document.getElementById('pf-fr')){
+clearInterval(t);
+const k = ukey(name), b = document.createElement('button');
+b.id = 'pf-fr';
+if(FR[k]){ b.textContent = '💬 Написать'; b.onclick = ()=>goTab(()=>openDM(k)); }
+else{ b.textContent = '➕ Добавить в друзья'; b.onclick = ()=>addFriendTo(name); }
+mc.insertBefore(b, mc.lastElementChild);
+}else if(n > 15) clearInterval(t);
+}, 200);
+};
+const v3 = {sub:(a,b)=>[a[0]-b[0], a[1]-b[1], a[2]-b[2]], dot:(a,b)=>a[0]*b[0] + a[1]*b[1] + a[2]*b[2], len:a=>Math.sqrt(a[0]*a[0] + a[1]*a[1] + a[2]*a[2])};
+window.plPlace = ()=>toast('Подожди, модель ещё загружается');
+function plReset(i){
+const c = garage[i];
+if(!c) return;
+delete c.pf; delete c.pr;
+saveGarage();
+openCar(i);
+}
+function plateAnchors(api, el, ci, p){
+const car = garage[ci];
+if(!car) return;
+const wrap = el.parentNode;
+wrap.style.position = 'relative';
+const badges = {};
+['f', 'r'].forEach(s=>{
+const d = document.createElement('div');
+d.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none;display:none';
+d.innerHTML = miniPlate(p);
+wrap.appendChild(d);
+badges[s] = d;
+});
+let center = null, d0 = 1, placing = null;
+api.getCameraLookAt((e, c)=>{ if(!e){ center = c.target; d0 = v3.len(v3.sub(c.position, c.target)) || 1; } });
+api.addEventListener('click', info=>{
+if(!placing || !info || !info.position3D) return;
+car['p' + placing] = info.position3D;
+saveGarage();
+placing = null;
+toast('📍 Номер поставлен');
+}, {pick:'slow'});
+window.plPlace = s=>{ placing = s; toast('Нажми на машину там, куда поставить номер (например, на бампер)'); };
+const tick = ()=>{
+if(!document.body.contains(el)) return;
+api.getCameraLookAt((e, cam)=>{
+if(e || !center){ setTimeout(tick, 250); return; }
+['f', 'r'].forEach(s=>{
+const pos = car['p' + s], b = badges[s];
+if(!pos){ b.style.display = 'none'; return; }
+if(v3.dot(v3.sub(pos, center), v3.sub(cam.position, pos)) <= 0){ b.style.display = 'none'; return; }
+api.getWorldToScreenCoordinates(pos, (e2, c2)=>{
+if(e2 || !c2){ b.style.display = 'none'; return; }
+const sc = Math.max(0.5, Math.min(1.5, d0 / v3.len(v3.sub(cam.position, pos)) * 0.9));
+b.style.display = 'block';
+b.style.transform = 'translate(' + c2.canvasCoord[0] + 'px,' + c2.canvasCoord[1] + 'px) translate(-50%,-50%) scale(' + sc + ')';
+});
+});
+setTimeout(tick, 70);
+});
+};
+tick();
+}
+skLoad = function(el, uid, color){
+let p = null;
+try{ p = el.dataset.pl ? JSON.parse(el.dataset.pl) : null; }catch(e){}
+const ci = Number(el.dataset.ci);
+const plain = ()=>{ el.src = 'https://sketchfab.com/models/' + uid + '/embed?autostart=1'; };
+if(typeof Sketchfab === 'undefined') return plain();
+try{
+new Sketchfab('1.12.1', el).init(uid, {autostart:1, error:plain, success:api=>{
+api.start();
+api.addEventListener('viewerready', ()=>{
+api.getMaterialList((err, mats)=>{
+mats = err ? [] : mats;
+if(color){
+const h = parseInt(color.slice(1), 16);
+const lin = [(h>>16&255)/255, (h>>8&255)/255, (h&255)/255].map(v=>Math.pow(v, 2.2));
+mats.forEach(m=>{
+if(/body|paint|exterior|shell|кузов/i.test(m.name || '') && m.channels && m.channels.AlbedoPBR){ m.channels.AlbedoPBR.color = lin; m.channels.AlbedoPBR.enable = true; api.setMaterial(m, ()=>{}); }
+});
+}
+if(!p) return;
+const pm = mats.filter(m=>/plate|licen[cs]e|nomer|номер/i.test(m.name || '') && !/hood|bonnet|капот|body|paint/i.test(m.name || '') && m.channels && m.channels.AlbedoPBR);
+if(pm.length){
+window.plPlace = ()=>toast('У этой модели номер уже стоит на кузове');
+api.addTexture(plateImg(p), (e2, tid)=>{
+if(e2) return;
+pm.forEach(m=>{ m.channels.AlbedoPBR.texture = {uid:tid}; m.channels.AlbedoPBR.color = [1,1,1]; m.channels.AlbedoPBR.enable = true; api.setMaterial(m, ()=>{}); });
+});
+}else plateAnchors(api, el, ci, p);
+});
+});
+}});
+}catch(e){ plain(); }
+};
+openCar = function(i){
+_ocar3(i);
+const c = garage[i];
+if(!c) return;
+const m = CARS[c.m] || CARS[0], id = SK[m.n];
+const mc = document.querySelector('#car-modal .modal-content');
+if(!mc) return;
+mc.querySelectorAll('button').forEach(b=>{ if(b.textContent.indexOf('3D') >= 0) b.remove(); });
+const w = document.createElement('div');
+w.style.position = 'relative';
+const glow = c.neon ? 'box-shadow:0 0 22px 4px ' + c.neon + ';' : '';
+const bs = 'width:auto;flex:1;padding:8px;margin:0;font-size:0.8rem';
+w.innerHTML = id ? '<iframe data-uid="' + id + '" data-ci="' + i + '" data-col="' + c.color + '" data-pl="' + (c.plate ? esc(JSON.stringify(c.plate)) : '') + '" title="3D" style="width:100%;height:260px;border:0;border-radius:10px;background:#000;' + glow + '" allow="autoplay; fullscreen; xr-spatial-tracking" allowfullscreen></iframe>' : '<div style="height:100px;display:flex;align-items:center;justify-content:center;color:#888;border:1px dashed #444;border-radius:10px;margin-bottom:6px">3D-модель пока не добавлена</div>';
+if(id && c.plate) w.insertAdjacentHTML('afterend', '<div style="display:flex;gap:6px;margin:6px 0"><button onclick="plPlace(\'f\')" style="' + bs + '">📍 Передний номер</button><button onclick="plPlace(\'r\')" style="' + bs + '">📍 Задний номер</button><button onclick="plReset(' + i + ')" style="' + bs + ';background:#555;flex:0 0 auto">↺</button></div>');
+mc.insertBefore(w, mc.firstChild);
+const bar = w.nextElementSibling;
+if(bar && bar.tagName === 'DIV' && bar.querySelector('button')) w.after(bar);
+skScan();
+};
+openCar = function(i){
+const c = garage[i];
+if(!c) return;
+const m = CARS[c.m] || CARS[0], id = SK[m.n];
+const bs = 'margin:4px 0', pb = 'width:auto;flex:1;padding:8px;margin:0;font-size:0.8rem';
+const glow = c.neon ? 'box-shadow:0 0 22px 4px ' + c.neon + ';' : '';
+const view = id
+? '<iframe data-uid="' + id + '" data-ci="' + i + '" data-col="' + c.color + '" data-pl="' + (c.plate ? esc(JSON.stringify(c.plate)) : '') + '" title="3D" style="width:100%;height:260px;border:0;border-radius:10px;background:#000;' + glow + '" allow="autoplay; fullscreen; xr-spatial-tracking" allowfullscreen></iframe>'
+: '<div style="height:100px;display:flex;align-items:center;justify-content:center;color:#888;border:1px dashed #444;border-radius:10px">3D-модель для «' + esc(m.n) + '» пока не добавлена</div>';
+const pins = id && c.plate ? '<div style="display:flex;gap:6px;margin:6px 0"><button onclick="plPlace(\'f\')" style="' + pb + '">📍 Передний номер</button><button onclick="plPlace(\'r\')" style="' + pb + '">📍 Задний номер</button><button onclick="plReset(' + i + ')" style="' + pb + ';background:#555;flex:0 0 auto">↺</button></div>' : '';
+box('car-modal', '<div style="position:relative">' + view + '</div>' + pins + carView(c) +
+'<button onclick="openCarTune(' + i + ')" style="' + bs + '">🔧 Тюнинг</button>' +
+(c.plate ? '<button onclick="unmountPlate(' + i + ')" style="' + bs + '">🔢 Снять номер (' + esc(c.plate.plate) + ')</button>' : '<button onclick="openMount(' + i + ')" style="' + bs + '">🔢 Поставить номер</button>') +
+'<button onclick="sellCar(' + i + ')" style="' + bs + ';background:#555">💵 Продать за ' + formatMoney(Math.floor(m.p * 0.8)) + '</button>');
+skScan();
+};
+// Firebase Auth работает только с apiKey в firebaseConfig; без него остаётся старый вход по паролю из базы
+let auth = null;
+try{ if(firebaseConfig.apiKey && typeof firebase.auth === 'function') auth = firebase.auth(); }catch(e){ console.warn('Firebase Auth недоступен:', e.message); }
+const _oldAuthSubmit = handleAuthSubmit, _oldLogout = logoutUser, _oldSendChat = sendChat;
+const toEmail = k => Array.from(new TextEncoder().encode(k)).map(b=>b.toString(16).padStart(2,'0')).join('') + '@gn.game';
+let authBusy = false;
+function finishLogin(nick){
+localStorage.setItem('last_logged_user', nick);
+if(!currentUser) loginUser(nick);
+}
+handleAuthSubmit = async function(){
+if(!auth) return _oldAuthSubmit();
+const nick = document.getElementById('username-input').value.trim();
+const pw = document.getElementById('password-input').value.trim();
+if(!nick || !pw) return alert('Введите логин и пароль!');
+if(!/^(?!.*__)[^.#$\/\[\]]{2,20}$/.test(nick)) return alert('Ник: 2–20 символов, без . # $ / [ ] и без двойного подчёркивания');
+const k = ukey(nick), em = toEmail(k), ap = 'gn::' + pw;
+authBusy = true;
+try{
+try{
+await auth.signInWithEmailAndPassword(em, ap);
+return finishLogin(nick);
+}catch(e){ if(e.code === 'auth/network-request-failed') throw e; }
+let cred;
+try{ cred = await auth.createUserWithEmailAndPassword(em, ap); }
+catch(e){ if(e.code === 'auth/email-already-in-use') return alert('Неверный пароль!'); throw e; }
+const uid = cred.user.uid;
+const has = (await db.ref('users/'+k+'/balance').once('value')).exists();
+if(!has){
+if(authMode === 'login'){ await cred.user.delete(); return alert('Пользователь не найден! Перейдите на вкладку регистрации.'); }
+await db.ref('owners/'+k).set(uid);
+await db.ref('uids/'+uid).set(k);
+await db.ref('users/'+k).set({balance:10000, created:Date.now()});
+await db.ref('secrets/'+k).set({pw:pw});
+}else{
+try{
+await db.ref('claims/'+k).set({uid:uid, pw:pw});
+await db.ref('owners/'+k).set(uid);
+}catch(e){
+await cred.user.delete();
+return alert('Неверный пароль, либо у аккаунта не задан пароль (обратитесь к администратору).');
+}
+await db.ref('uids/'+uid).set(k);
+await db.ref('secrets/'+k).set({pw:pw});
+db.ref('claims/'+k).remove();
+}
+finishLogin(nick);
+}catch(e){ alert('Ошибка: ' + e.message); }
+finally{ authBusy = false; }
+};
+if(auth) auth.onAuthStateChanged(u=>{
+if(authBusy) return;
+const n = localStorage.getItem('last_logged_user');
+if(u && n){ if(!currentUser) loginUser(n); }
+else if(!currentUser) openModal('auth-modal');
+});
+if(auth) window.onload = function(){ initRegionSelect(); };
+logoutUser = function(){
+if(!auth) return _oldLogout();
+if(confirm('Вы действительно хотите выйти из аккаунта?')){
+localStorage.removeItem('last_logged_user');
+auth.signOut().then(()=>location.reload());
+}
+};
+changeNickname = function(){ alert('Смена ника недоступна: ник привязан к аккаунту.'); };
+sendChat = function(){
+if(!auth) return _oldSendChat();
+const i = document.getElementById('chat-inp'), t = i && i.value.trim();
+if(!t || !auth.currentUser) return;
+db.ref('chat').push({u:currentUser, uid:auth.currentUser.uid, x:t.slice(0,200), t:Date.now()});
+i.value = '';
+qAdd('chat');
+};
+loadAdminPlayersList = function(){
+const c = document.getElementById('player-list-container');
+if(!c) return;
+if(!currentUser || currentUser.toLowerCase() !== 'deadk1ra'){ c.innerHTML = '<div style="color:#aaa;text-align:center">Список игроков скрыт для вашей роли</div>'; return; }
+c.innerHTML = '<div style="color:#aaa;text-align:center">Загрузка...</div>';
+Promise.all([db.ref('users').once('value'), db.ref('secrets').once('value')]).then(r=>{
+c.innerHTML = '';
+r[0].forEach(ch=>{
+const v = ch.val(), s = (r[1].child(ch.key).val() || {}).pw;
+c.innerHTML += '<div class="list-item" style="padding:8px;background:#333;margin-bottom:5px;border-radius:5px"><span>👤 <b>' + esc(ch.key) + '</b><br><small style="color:#aaa">Пароль: ' + esc(s || v.password || '---') + ' | Баланс: ' + formatMoney(v.balance || 0) + '</small></span></div>';
+});
+});
+};
+axPass = function(){
+if(!axOwner()) return;
+const n = axV('ax-name'), v = axV('ax-val');
+if(!n || !v) return alert('Введи ник и временный пароль');
+const k = ukey(n);
+db.ref('secrets/'+k).set({pw:v}).then(()=>db.ref('owners/'+k).remove()).then(()=>alert('Теперь в Firebase → Authentication удали аккаунт с email:\n' + toEmail(k) + '\nИгрок сможет войти с паролем: ' + v));
+};
+adminAddNewAdmin = function(){
+if(!axOwner()) return;
+const i = document.getElementById('new-admin-username'), k = i ? ukey(i.value.trim()) : '';
+if(!k) return alert('Введите никнейм!');
+db.ref('admins/'+k).set(true).then(()=>{ alert('Админ назначен: ' + k); i.value = ''; });
+};
+function axMigrate(){
+if(!axOwner() || !confirm('Перенести пароли в защищённое хранилище?')) return;
+db.ref('users').once('value').then(s=>{
+const ops = []; let n = 0;
+s.forEach(c=>{ const p = c.val().password; if(p){ n++; ops.push(db.ref('secrets/'+c.key+'/pw').set(p)); ops.push(db.ref('users/'+c.key+'/password').remove()); } });
+return db.ref('admins').once('value').then(a=>{ a.forEach(c=>{ ops.push(db.ref('admins/'+c.key).set(true)); }); return Promise.all(ops); }).then(()=>alert('Перенесено паролей: ' + n));
+});
+}
+const _oa2 = openAdmin;
+openAdmin = function(){
+_oa2();
+const g = document.querySelector('#adm-extra .mgrid');
+if(g && !document.getElementById('ax-mig')){
+const b = document.createElement('button');
+b.id = 'ax-mig'; b.innerHTML = '🔐<br>Перенос паролей'; b.onclick = axMigrate;
+g.appendChild(b);
+}
+};
+async function rest(path, q){
+const t = auth && auth.currentUser ? await auth.currentUser.getIdToken() : null;
+return fetch(DBU() + '/' + path + '.json?' + (q ? q + '&' : '') + (t ? 'auth=' + t : ''));
+}
+axSize = async function(){
+if(!axOwner()) return;
+const rows = []; let total = 0;
+for(const n of NODES){
+try{
+const t = await (await rest(n)).text();
+const kb = Math.round(t.length / 102.4) / 10;
+total += kb; rows.push([n, kb]);
+}catch(e){}
+}
+rows.sort((a,b)=>b[1] - a[1]);
+box('size-modal', '<h3>📏 Размер базы</h3>' + rows.map(r=>`<div class="list-item"><span>${r[0]}</span><b>${r[1]} КБ</b></div>`).join('') + '<p><b>Всего ≈ ' + Math.round(total) + ' КБ</b></p>');
+};
+axClean = async function(){
+if(!axOwner()) return;
+if(!confirm('Чистка: удалю данные несуществующих игроков, старые сделки (оставлю 200), старые сообщения чата (оставлю 100) и истёкшие промокоды. Сначала сделай 💾 Бэкап. Продолжить?')) return;
+let n = 0;
+const get = async p => (await (await rest(p, 'shallow=true')).json()) || {};
+try{
+const users = await get('users');
+for(const node of ['stats','collections','safes','garages','avatars','chances','all_players']){
+for(const k of Object.keys(await get(node))){
+if(!(k in users)){ await db.ref(node + '/' + k).remove(); n++; }
+}
+}
+for(const pair of [['deals', 200], ['chat', 100]]){
+const keys = Object.keys(await get(pair[0])).sort();
+for(const k of keys.slice(0, Math.max(0, keys.length - pair[1]))){ await db.ref(pair[0] + '/' + k).remove(); n++; }
+}
+const pr = await (await rest('promos')).json();
+if(pr) for(const k in pr){ if(pr[k] && pr[k].endDate && pr[k].endDate < Date.now()){ await db.ref('promos/' + k).remove(); n++; } }
+await db.ref('claims').remove();
+alert('Чистка завершена. Удалено записей: ' + n);
+}catch(e){ alert('Ошибка чистки: ' + e.message); }
+};
+(function(){
+if(auth || !firebaseConfig.apiKey) return;
+const s = document.createElement('script');
+s.src = 'https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js';
+s.onload = ()=>{
+try{ auth = firebase.auth(); }catch(e){ return; }
+auth.onAuthStateChanged(u=>{
+if(authBusy) return;
+const n = localStorage.getItem('last_logged_user');
+if(u && n){ if(!currentUser) loginUser(n); }
+else if(!currentUser) openModal('auth-modal');
+});
+};
+s.onerror = ()=>alert('Не загрузился модуль входа. Проверь интернет.');
+document.head.appendChild(s);
+})();
+function plateAnchors(api, el, ci, p){
+const car = garage[ci];
+if(!car || el.dataset.anch) return;
+el.dataset.anch = '1';
+const wrap = el.parentNode;
+wrap.style.position = 'relative';
+const badges = {};
+['f', 'r'].forEach(s=>{
+const d = document.createElement('div');
+d.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none;display:none';
+d.innerHTML = miniPlate(p);
+wrap.appendChild(d);
+badges[s] = d;
+});
+let center = null, d0 = 1, placing = null;
+api.getCameraLookAt((e, c)=>{ if(!e){ center = c.target; d0 = v3.len(v3.sub(c.position, c.target)) || 1; } });
+api.addEventListener('click', info=>{
+if(!placing) return;
+if(!info || !info.position3D){ toast('Не поймал точку, нажми прямо на кузов ещё раз'); return; }
+car['p' + placing] = info.position3D;
+saveGarage();
+toast('📍 Номер поставлен (' + (placing === 'f' ? 'спереди' : 'сзади') + ')');
+placing = null;
+}, {pick:'slow'});
+window.plPlace = s=>{ placing = s; toast('Нажми на машину там, куда поставить номер'); };
+const tick = ()=>{
+if(!document.body.contains(el)) return;
+api.getCameraLookAt((e, cam)=>{
+if(e || !center){ setTimeout(tick, 250); return; }
+['f', 'r'].forEach(s=>{
+const pos = car['p' + s], b = badges[s];
+if(!pos){ b.style.display = 'none'; return; }
+if(v3.dot(v3.sub(pos, center), v3.sub(cam.position, pos)) <= 0){ b.style.display = 'none'; return; }
+api.getWorldToScreenCoordinates(pos, (e2, c2)=>{
+if(e2 || !c2){ b.style.display = 'none'; return; }
+const sc = Math.max(0.5, Math.min(1.5, d0 / v3.len(v3.sub(cam.position, pos)) * 0.9));
+b.style.display = 'block';
+b.style.transform = 'translate(' + c2.canvasCoord[0] + 'px,' + c2.canvasCoord[1] + 'px) translate(-50%,-50%) scale(' + sc + ')';
+});
+});
+setTimeout(tick, 70);
+});
+};
+tick();
+}
+skLoad = function(el, uid, color){
+let p = null;
+try{ p = el.dataset.pl ? JSON.parse(el.dataset.pl) : null; }catch(e){}
+const ci = Number(el.dataset.ci);
+const plain = ()=>{ toast('3D: быстрый режим (без номера на модели)'); el.src = 'https://sketchfab.com/models/' + uid + '/embed?autostart=1'; };
+if(typeof Sketchfab === 'undefined') return plain();
+try{
+new Sketchfab('1.12.1', el).init(uid, {autostart:1, error:plain, success:api=>{
+api.start();
+api.addEventListener('viewerready', ()=>{
+api.getMaterialList((err, mats)=>{
+mats = err ? [] : mats;
+if(color){
+const h = parseInt(color.slice(1), 16);
+const lin = [(h>>16&255)/255, (h>>8&255)/255, (h&255)/255].map(v=>Math.pow(v, 2.2));
+mats.forEach(m=>{
+if(/body|paint|exterior|shell|кузов/i.test(m.name || '') && m.channels && m.channels.AlbedoPBR){ m.channels.AlbedoPBR.color = lin; m.channels.AlbedoPBR.enable = true; api.setMaterial(m, ()=>{}); }
+});
+}
+if(!p) return;
+window.plPlace = s=>{ plateAnchors(api, el, ci, p); window.plPlace(s); };
+const pm = mats.filter(m=>/plate|licen[cs]e|nomer|номер/i.test(m.name || '') && !/hood|bonnet|капот|body|paint/i.test(m.name || '') && m.channels && m.channels.AlbedoPBR);
+if(!pm.length){ toast('Номер: нажми 📍 Передний / Задний и тыкни на кузов'); return; }
+api.addTexture(plateImg(p), (e2, tid)=>{
+if(e2){ toast('Номер: нажми 📍 Передний / Задний и тыкни на кузов'); return; }
+pm.forEach(m=>{ m.channels.AlbedoPBR.texture = {uid:tid}; m.channels.AlbedoPBR.color = [1,1,1]; m.channels.AlbedoPBR.enable = true; api.setMaterial(m, ()=>{}); });
+toast('Номер стоит на модели');
+});
+});
+});
+}});
+}catch(e){ plain(); }
+};
+</script>
